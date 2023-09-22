@@ -73,6 +73,9 @@ class FeatureEmbeddingDict(nn.Module):
                     if feature_spec["type"] == "sequence":
                         self.feature_encoders[feature] = layers.MaskedSumPooling()
                 else:
+                    # If the embedding_dim is specifically defined in the feature_map, then use the value specified
+                    # in the special convention within the feature_map; otherwise, use the parameter passed as
+                    # an argument.
                     feat_emb_dim = feature_spec.get("embedding_dim", embedding_dim)
                     if feature_spec.get("feature_encoder", None):
                         self.feature_encoders[feature] = self.get_feature_encoder(feature_spec["feature_encoder"])
