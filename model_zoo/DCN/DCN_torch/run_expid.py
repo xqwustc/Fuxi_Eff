@@ -17,8 +17,10 @@
 
 import os
 import sys
-sys.path.append(".../fuxictr")
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
+current_dir = os.path.dirname(__file__)
+fuxipac_dir = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
+sys.path.append(fuxipac_dir)
 
 import sys
 import logging
