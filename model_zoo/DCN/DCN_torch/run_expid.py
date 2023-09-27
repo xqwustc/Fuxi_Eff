@@ -36,6 +36,7 @@ import gc
 import argparse
 import os
 from pathlib import Path
+import pickle
 
 
 if __name__ == '__main__':
@@ -52,7 +53,7 @@ if __name__ == '__main__':
     params['gpu'] = args['gpu']
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
-    seed_everything(seed=params['seed'])
+    # seed_everything(seed=params['seed'])
 
     data_dir = os.path.join(params['data_root'], params['dataset_id'])
     feature_map_json = os.path.join(data_dir, "feature_map.json")
@@ -70,13 +71,27 @@ if __name__ == '__main__':
     model.count_parameters() # print number of parameters used in model
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+
     model.fit(train_gen, validation_data=valid_gen, **params)
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)
     del train_gen, valid_gen
     gc.collect()
-    
+
+    # -- update for fmcr start---
+    file = open('exp_metric', 'wb')
+    pickle.dump(valid_result, file)
+    file.close()
+
+    logging.info('****** Validation with fmcr ******')
+    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+    native_log_loss, native_feature_importance = model.evaluate_with_fmcr(valid_gen)
+    del train_gen, valid_gen
+    gc.collect()
+    # ---update for fmcr end---
+
+
     logging.info('******** Test evaluation ********')
     test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
     test_result = {}
