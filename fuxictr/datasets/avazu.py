@@ -18,7 +18,6 @@
 from fuxictr.preprocess import FeatureProcessor as BaseFeatureProcessor
 from datetime import datetime, date
 
-
 class FeatureProcessor(BaseFeatureProcessor):
     def convert_weekday(self, df, col_name):
         def _convert_weekday(timestamp):
@@ -34,5 +33,3 @@ class FeatureProcessor(BaseFeatureProcessor):
 
     def convert_hour(self, df, col_name):
         return df['hour'].apply(lambda x: int(x[6:8]))
-
-
