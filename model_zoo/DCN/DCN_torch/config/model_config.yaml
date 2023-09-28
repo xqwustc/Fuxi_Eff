@@ -14,7 +14,7 @@ Base:
 
 DCN_test:
     model: DCN
-    dataset_id: tiny_h5
+    dataset_id: tiny_example1
     loss: 'binary_crossentropy'
     metrics: ['logloss', 'AUC']
     task: binary_classification
@@ -35,7 +35,7 @@ DCN_test:
     monitor: 'AUC'
     monitor_mode: 'max'
 
-DCN_default: # This is a config template
+DCN_default: # This is a config template, related to feature map
     model: DCN
     dataset_id: TBD
     loss: 'binary_crossentropy'

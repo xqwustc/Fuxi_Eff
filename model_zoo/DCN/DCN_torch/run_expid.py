@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     logging.info('****** Validation with fmcr ******')
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    native_log_loss, native_feature_importance = model.evaluate_with_fmcr(valid_gen)
+    # native_log_loss, native_feature_importance = model.evaluate_with_fmcr(valid_gen)
     del train_gen, valid_gen
     gc.collect()
     # ---update for fmcr end---
