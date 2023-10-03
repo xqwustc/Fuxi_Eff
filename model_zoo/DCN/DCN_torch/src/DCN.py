@@ -30,7 +30,7 @@ class DCN(BaseModel):
                  dnn_hidden_units=[],
                  dnn_activations="ReLU",
                  num_cross_layers=3,
-                 net_dropout=0,
+                 net_dropout=0.3,
                  batch_norm=False,
                  embedding_regularizer=None,
                  net_regularizer=None,
@@ -42,6 +42,10 @@ class DCN(BaseModel):
                                   net_regularizer=net_regularizer,
                                   **kwargs)
         self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
+        self.interpolate_n = 5
+        self.mcdropout_n = int(net_dropout * 100)
+
         input_dim = feature_map.sum_emb_out_dim()
         self.dnn = MLP_Block(input_dim=input_dim,
                              output_dim=None, # output hidden layer
@@ -74,3 +78,96 @@ class DCN(BaseModel):
         return_dict = {"y_pred": y_pred}
         return return_dict
 
+    def forward_with_fmcr(self, inputs, seed=2019):
+        X = self.get_inputs(inputs)
+        torch.manual_seed(seed)
+        # --- update for fmcr ---
+        self.feature_emb = self.embedding_layer(X, flatten_emb=True)
+        self.feature_emb.requires_grad_(requires_grad=True)
+        self.feature_emb_mean = torch.mean(self.feature_emb, axis=0)
+
+        self.feature_emb_delta_step = (self.feature_emb - self.feature_emb_mean) / self.interpolate_n
+        self.feature_emb_list = [self.feature_emb]
+        for i in range(self.interpolate_n):
+            self.feature_emb_list.append(self.feature_emb - (i + 1) * self.feature_emb_delta_step)
+        self.feature_emb = torch.concat(self.feature_emb_list, dim=0)
+        self.feature_emb.retain_grad()
+        # --- update for fmcr ---
+
+        cross_out = self.crossnet(self.feature_emb)
+        if self.dnn is not None:
+            dnn_out = self.dnn(self.feature_emb)
+            final_out = torch.cat([cross_out, dnn_out], dim=-1)
+        else:
+            final_out = cross_out
+        y_pred = self.fc(final_out)
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def evaluate_with_fmcr(self, data_generator, metrics=None, seed=2019):
+        y_pred = []
+        y_true = []
+        group_id = []
+
+        fmcr_score_final_result = None
+
+        for batch_data in data_generator:
+            return_dict = self.forward_with_fmcr(batch_data, seed)
+
+            # 进行一次梯度回传
+            y_true_fmcr = self.get_labels(batch_data)
+            y_true_fmcr = y_true_fmcr.repeat(self.interpolate_n + 1, 1)
+            loss = self.compute_loss(return_dict, y_true_fmcr)
+            loss.backward()
+            fmcr_gradient = self.feature_emb.grad
+
+            # 计算fmcr单batch指标
+            emb_size_sum = self.feature_emb.shape[1]
+            field_n = batch_data.shape[1] - 1
+            emb_size_single = int(emb_size_sum / field_n)
+
+            fmcr_field_gradient = torch.split(fmcr_gradient, emb_size_single, dim=1)
+            fmcr_field_delta = [i.repeat(self.interpolate_n + 1, 1) for i in
+                                torch.split(self.feature_emb_delta_step, emb_size_single, dim=1)]
+
+            fmcr_loss_delta = []
+            for i in range(field_n):
+                fmcr_loss_delta.append(torch.einsum('ij,ij->i', fmcr_field_gradient[i],
+                                                    fmcr_field_delta[i]).data.cpu().mean().detach().numpy())
+
+            # 计算fmcr累计batch指标
+            if fmcr_score_final_result is None:
+                fmcr_score_final_result = np.abs(np.array(fmcr_loss_delta))
+            else:
+                fmcr_score_final_result += np.abs(np.array(fmcr_loss_delta))
+            self.optimizer.zero_grad()
+
+            y_true_tmp = self.get_labels(batch_data).data.cpu().numpy().reshape(-1)
+            y_true.extend(y_true_tmp)
+            y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1)[:len(y_true_tmp)])
+
+        y_pred = np.array(y_pred, np.float64)
+        y_true = np.array(y_true, np.float64)
+        group_id = np.array(group_id) if len(group_id) > 0 else None
+
+        if metrics is not None:
+            val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+        else:
+            val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+        logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+
+        # 处理成可读的特征重要性指标
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': fmcr_score_final_result.tolist()})
+        return feature_importance_result, val_logs['logloss']
+
+    def evaluate_with_fmcr_native(self, data_generator, metrics=None):
+        self.eval()
+        feature_importance_result, native_log_loss = self.evaluate_with_fmcr(data_generator, metrics=None)
+        feature_importance_result_sorted = feature_importance_result.sort_values(by='feature_weight', ascending=False)
+        feature_importance_result_sorted['cumsum_feature_weight'] = feature_importance_result_sorted[
+            'feature_weight'].cumsum()
+        logging.info('================= Fast MCR Result =================')
+        logging.info(feature_importance_result_sorted)
+        return native_log_loss, feature_importance_result

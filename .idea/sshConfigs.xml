@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig authType="PASSWORD" host="1.117.222.72" id="9c96fa0f-b873-4f7a-8130-e5e354ded54b" port="22" nameFormat="DESCRIPTIVE" username="root" useOpenSSHConfig="true" />
+      <sshConfig authType="PASSWORD" host="36447s3e93.imdo.co" id="64050b77-0c71-49be-9247-0211fde9e65d" port="2245" nameFormat="DESCRIPTIVE" username="bb" useOpenSSHConfig="true" />
+    </configs>
+  </component>
+</project>

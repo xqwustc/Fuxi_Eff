@@ -1,7 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="root@connect.westb.seetacloud.com:11716 password" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="xianyu" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
+      <paths name="502">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/seafile/stev/FuxiCTR" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@1.117.222.72:22 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/seafile/stev/FuxiCTR" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@1.117.222.72:22 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/seafile/stev/FuxiCTR" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="root@connect.beijinga.seetacloud.com:37689 password">
         <serverdata>
           <mappings>
@@ -48,6 +69,13 @@
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="xianyu">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/bb/proj\FuxiCTR" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
