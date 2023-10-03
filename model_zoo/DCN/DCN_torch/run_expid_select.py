@@ -31,7 +31,7 @@ from fuxictr.utils import load_config, set_logger, print_to_json, print_to_list
 from fuxictr.features import FeatureMap
 from fuxictr.pytorch.torch_utils import seed_everything
 from fuxictr.pytorch.dataloaders import H5DataLoader
-from fuxictr.preprocess import FeatureProcessor, build_dataset
+from fuxictr.preprocess import build_dataset
 import src as model_zoo
 import gc
 import argparse
@@ -53,6 +53,14 @@ if __name__ == '__main__':
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     # seed_everything(seed=params['seed'])
+
+    if params.get('spe_processor'):
+        module_name = f"fuxictr.datasets.{params['spe_processor']}"
+        fp_module = importlib.import_module(module_name)
+        assert hasattr(fp_module, 'FeatureProcessor')
+        FeatureProcessor = getattr(fp_module, 'FeatureProcessor')
+    else:
+        from fuxictr.preprocess import FeatureProcessor
 
     data_dir = os.path.join(params['data_root'], params['dataset_id'])
     feature_map_json = os.path.join(data_dir, "feature_map.json")
