@@ -21,6 +21,7 @@ os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
 
 sys.path.append('../../../fuxictr')
+sys.path.append('../../../')
 
 # --- update for fmcr ---
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -45,6 +46,8 @@ import gc
 import argparse
 import os
 from pathlib import Path
+import importlib
+from infomer import email
 
 if __name__ == '__main__':
     ''' Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
@@ -61,6 +64,16 @@ if __name__ == '__main__':
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     # seed_everything(seed=params['seed'])
+
+    email.common_send('DCN_IG_incre.py',params["data_format"])
+
+    if params.get('spe_processor'):
+        module_name = f"fuxictr.datasets.{params['spe_processor']}"
+        fp_module = importlib.import_module(module_name)
+        assert hasattr(fp_module, 'FeatureProcessor')
+        FeatureProcessor = getattr(fp_module, 'FeatureProcessor')
+    else:
+        from fuxictr.preprocess import FeatureProcessor
 
     data_dir = os.path.join(params['data_root'], params['dataset_id'])
     feature_map_json = os.path.join(data_dir, "feature_map.json")
@@ -82,9 +95,12 @@ if __name__ == '__main__':
     topk_logloss_result = []
     topk_auc_result = []
 
-    for i in range(df.shape[0]):
+    #for i in range(df.shape[0]):
+    #for i in range(df.shape[0]-1, 11, -1):
+    for i in range(11, 12):
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
+        logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'], len(topk_params['use_features'])))
         topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
         topk_feature_map.load(feature_map_json, topk_params)
 
@@ -96,10 +112,11 @@ if __name__ == '__main__':
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
         valid_result = topk_model.evaluate(valid_gen)
 
-        topk_column_name.append('topk_{}'.format(i + 1))
+        topk_column_name.append('topk_{}_with_{}'.format(i+1, topk_params['use_features']))
         topk_logloss_result.append(valid_result['logloss'])
         topk_auc_result.append(valid_result['AUC'])
 
+        email.common_send('DCN_IG_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
         del train_gen, valid_gen
         gc.collect()
 

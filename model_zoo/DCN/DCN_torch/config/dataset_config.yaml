@@ -13,6 +13,15 @@ avazu_x4:
     train_data: ../../../data/avazu_x4/train.csv
     valid_data: ../../../data/avazu_x4/valid.csv
     test_data: ../../../data/avazu_x4/test.csv
+    feature_cols:
+        - { name: [ hour ],
+          active: True, dtype: str, type: categorical, preprocess: convert_hour,fill_na: "" }
+        - { name: [id,banner_pos,site_id,site_domain,site_category,app_id,app_domain,app_category,device_id,device_ip,device_model,device_type,device_conn_type],
+          active: True, dtype: str, type: categorical, fill_na: "" }
+        - { name: [ C1,C14,C15,C16,C17,C18,C19,C20,C21],
+            active: True, dtype: str, type: categorical, fill_na: "" }
+    label_col: { name: click, dtype: float }
+    spe_processor: avazu
 
 criteo_x4:
     data_root: ../../../data/

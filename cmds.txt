@@ -1,0 +1,1 @@
+/home/bb/anaconda3/envs/Stev/bin/python /home/bb/proj/FuxiCTR/model_zoo/DCN/DCN_torch/run_expid_incre.py --expid DCN_criteo --gpu 0

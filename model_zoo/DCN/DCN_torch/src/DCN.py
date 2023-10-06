@@ -18,8 +18,11 @@ import torch
 from torch import nn
 from fuxictr.pytorch.models import BaseModel
 from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block, CrossNet
-
-
+import numpy as np
+import logging
+from tqdm import tqdm
+import sys
+import pandas as pd
 class DCN(BaseModel):
     def __init__(self, 
                  feature_map,
@@ -111,6 +114,8 @@ class DCN(BaseModel):
         group_id = []
 
         fmcr_score_final_result = None
+
+        data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
 
         for batch_data in data_generator:
             return_dict = self.forward_with_fmcr(batch_data, seed)

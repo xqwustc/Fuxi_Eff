@@ -21,9 +21,12 @@ os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
 
 sys.path.append('../../../fuxictr')
+sys.path.append('../../../')
+# print(sys.path)
 
 import logging
 import pickle
+import fuxictr
 import fuxictr_version
 from fuxictr import datasets
 from datetime import datetime
@@ -37,6 +40,11 @@ import gc
 import argparse
 import os
 from pathlib import Path
+import importlib
+import torch
+import numpy as np
+import logging
+from infomer import email
 
 if __name__ == '__main__':
     ''' Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
@@ -45,6 +53,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='./config/', help='The config directory.')
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
+    parser.add_argument('--cp', type=str, help='checkpoint path')
     args = vars(parser.parse_args())
 
     experiment_id = args['expid']
@@ -54,7 +63,7 @@ if __name__ == '__main__':
     logging.info("Params: " + print_to_json(params))
     # seed_everything(seed=params['seed'])
 
-    if params.get('spe_processor'):
+    if params.get('spe_processor',None) != None:
         module_name = f"fuxictr.datasets.{params['spe_processor']}"
         fp_module = importlib.import_module(module_name)
         assert hasattr(fp_module, 'FeatureProcessor')
@@ -79,7 +88,15 @@ if __name__ == '__main__':
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
 
-    model.fit(train_gen, validation_data=valid_gen, **params)
+    email.common_send('DCN_IG_select.py - Ava - Build Data',"")
+
+    if args.get('cp',None) != None:
+        print('load model from checkpoint')
+        model.load_state_dict(torch.load(args['cp']))
+    else:
+        model.fit(train_gen, validation_data=valid_gen, **params)
+
+    email.common_send('DCN_IG_select.py - Ava - Training', "")
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)

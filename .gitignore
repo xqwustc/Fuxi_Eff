@@ -108,3 +108,5 @@ checkpoints
 .csv
 /data/Avazu_x4/
 /data/Criteo_x4/
+/test_file/
+/infomer/
