@@ -95,9 +95,9 @@ if __name__ == '__main__':
     topk_logloss_result = []
     topk_auc_result = []
 
-    #for i in range(df.shape[0]):
+    for i in range(df.shape[0]):
     #for i in range(df.shape[0]-1, 11, -1):
-    for i in range(11, 12):
+    #for i in range(11, 12):
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
         logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'], len(topk_params['use_features'])))
