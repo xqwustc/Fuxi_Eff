@@ -176,3 +176,9 @@ class DCN(BaseModel):
         logging.info('================= Fast MCR Result =================')
         logging.info(feature_importance_result_sorted)
         return native_log_loss, feature_importance_result
+
+    def forward_with_dr(self,inputs,seed = 2019):
+        X = self.get_inputs(inputs)
+        torch.manual_seed(seed)
+
+        # --- update for dr ---

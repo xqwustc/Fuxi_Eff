@@ -52,7 +52,7 @@ DCN_default: # This is a config template, related to feature map
     num_cross_layers: 3
     net_dropout: 0
     batch_norm: False
-    epochs: 100
+    epochs: 50
     shuffle: True
     seed: 20222023
     monitor: {'AUC': 1, 'logloss': -1}
@@ -75,7 +75,7 @@ DCN_avazu:
     num_cross_layers: 3
     net_dropout: 0
     batch_norm: False
-    epochs: 10
+    epochs: 50
     shuffle: True
     seed: 20222023
     monitor: { 'AUC': 1, 'logloss': -1 }
