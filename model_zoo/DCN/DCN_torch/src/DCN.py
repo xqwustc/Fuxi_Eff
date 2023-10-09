@@ -177,8 +177,10 @@ class DCN(BaseModel):
         logging.info(feature_importance_result_sorted)
         return native_log_loss, feature_importance_result
 
-    def forward_with_dr(self,inputs,seed = 2019):
-        X = self.get_inputs(inputs)
-        torch.manual_seed(seed)
+    def evaluate_with_dr(self, data_generator, metrics=None, seed=2019):
+        pass
+    def evaluate_with_dr_native(self,data_generator, metrics=None):
+        '''This will be callled when eval with dr'''
 
-        # --- update for dr ---
+        self.eval()
+
