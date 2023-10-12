@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="bb@36447s3e93.imdo.co:2245 password" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="bb@36447s3e93.imdo.co:2278 password (2)" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="502">
         <serverdata>
@@ -10,6 +10,34 @@
         </serverdata>
       </paths>
       <paths name="bb@36447s3e93.imdo.co:2245 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/bb/proj/FuxiCTR" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="bb@36447s3e93.imdo.co:2245 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="bb@36447s3e93.imdo.co:2245 password (3)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="bb@36447s3e93.imdo.co:2278 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/bb/proj/FuxiCTR" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="bb@36447s3e93.imdo.co:2278 password (2)">
         <serverdata>
           <mappings>
             <mapping deploy="/home/bb/proj/FuxiCTR" local="$PROJECT_DIR$" />
@@ -41,6 +69,27 @@
         <serverdata>
           <mappings>
             <mapping deploy="/root/autodl-tmp/FuxiCTR" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@op.wwooww.cn:35600 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@op.wwooww.cn:35600 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@op.wwooww.cn:35600 password (3)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

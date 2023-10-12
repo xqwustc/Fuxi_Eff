@@ -87,13 +87,12 @@ if __name__ == '__main__':
     model.count_parameters()  # print number of parameters used in model
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    email.common_send('DCN_IG_select.py - Ava - Build Data',"")
+
     if args.get('cp',None) != None:
         print('load model from checkpoint')
         model.load_state_dict(torch.load(args['cp']))
     else:
         model.fit_for_dr(train_gen, validation_data=valid_gen, **params)
-    email.common_send('DCN_IG_select.py - Ava - Training', "")
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)

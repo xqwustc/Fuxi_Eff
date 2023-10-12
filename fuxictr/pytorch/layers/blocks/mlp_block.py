@@ -16,6 +16,7 @@
 
 
 import numpy as np
+import torch
 from torch import nn
 from fuxictr.pytorch.torch_utils import get_activation
 

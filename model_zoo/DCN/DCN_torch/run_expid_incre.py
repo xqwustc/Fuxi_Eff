@@ -89,7 +89,7 @@ if __name__ == '__main__':
     logging.info("Feature specs: " + print_to_json(feature_map.features))
 
     # 解析特征重要性的均值和方差作为先验
-    df = pd.read_csv('feature_parameter.csv')
+    df = pd.read_csv('feature_importance_result.csv')
 
     topk_column_name = []
     topk_logloss_result = []

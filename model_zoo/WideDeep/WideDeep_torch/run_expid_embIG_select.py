@@ -20,8 +20,8 @@ import os
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
 
-sys.path.append('../../../fuxictr')
-sys.path.append('../../../')
+sys.path.append('../../..')
+sys.path.append('../../../../')
 # print(sys.path)
 
 import logging
@@ -87,32 +87,35 @@ if __name__ == '__main__':
     model.count_parameters()  # print number of parameters used in model
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+
     email.common_send('DCN_IG_select.py - Ava - Build Data',"")
+
     if args.get('cp',None) != None:
         print('load model from checkpoint')
         model.load_state_dict(torch.load(args['cp']))
     else:
-        model.fit_for_dr(train_gen, validation_data=valid_gen, **params)
-    email.common_send('DCN_IG_select.py - Ava - Training', "")
-
-    logging.info('****** Validation evaluation ******')
-    valid_result = model.evaluate(valid_gen)
-    del train_gen, valid_gen
-    gc.collect()
+        model.fit(train_gen, validation_data=valid_gen, **params)
+    ## TODO
     #
-    # # --- update for droprank ---
+    # email.common_send('DeepWide_IG_select.py -Cri  - Training', "")
+    #
+    # logging.info('****** Validation evaluation ******')
+    # valid_result = model.evaluate(valid_gen)
+    # del train_gen, valid_gen
+    # gc.collect()
+    #
+    # # --- update for fmcr ---
     # file = open('exp_metric', 'wb')
     # pickle.dump(valid_result, file)
     # print('valid_result', valid_result)
     # file.close()
 
-    # logging.info('****** Validation with Droprank *******')
-    # train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    # #native_log_loss, native_feature_importance_result = model.evaluate_with_fmcr_native(valid_gen)
-    # model.evaluate_with_dr(valid_gen)
-    # del train_gen, valid_gen
-    # gc.collect()
-    # --- update for droprank ---
+    logging.info('****** Validation with fmcr *******')
+    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+    native_log_loss, native_feature_importance_result = model.evaluate_with_fmcr_native(valid_gen)
+    del train_gen, valid_gen
+    gc.collect()
+    # --- update for fmcr ---
 
     logging.info('******** Test evaluation ********')
     test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
