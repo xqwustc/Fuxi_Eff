@@ -59,6 +59,15 @@ class WideDeep(BaseModel):
                              output_activation=None, 
                              dropout_rates=net_dropout, 
                              batch_norm=batch_norm)
+
+        # --- update for droprank start---
+        self.gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
+        self.gates_theta.requires_grad_(requires_grad=True)
+            # --- for widedeep only ---
+        self.lr_embedding = FeatureEmbedding(self.feature_map, 1, use_pretrain=False, use_sharing=False)
+            # --- for widedeep only ---
+        # --- update for droprank end---
+
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()
@@ -77,24 +86,18 @@ class WideDeep(BaseModel):
 
     def forward_with_dr(self,inputs,gates_prob):
         X = self.get_inputs(inputs)
-        feature_emb = self.embedding_layer(X, flatten_emb=True)
 
+        feature_emb = self.embedding_layer(X)
+        emb_weights = self.lr_embedding(X)
         # --- update for droprank start---
-        data_after_gates = feature_emb
-        pre_idx = 0
+        for i in range(len(self.feature_map.features)):
+            feature_emb[:,i:i+1,:] *= gates_prob[i]
+            emb_weights[:,i:i+1,:] *= gates_prob[i]
 
-        # feature_emb_size[i] represents the embedding size of the i-th feature
-        feature_emb_size = self._get_featuremap_size(self.feature_map)
 
-        for i in range(len(feature_emb_size)):
-            data_after_gates[:, pre_idx:pre_idx + feature_emb_size[i]] *= gates_prob[i]
-            pre_idx += feature_emb_size[i]
-
-        feature_emb = data_after_gates
         # --- update for droprank end---
-
-        y_pred = self.lr_layer(X)
-        y_pred += self.dnn(feature_emb)
+        y_pred = emb_weights.sum(dim=1)
+        y_pred += self.dnn(feature_emb.flatten(start_dim=1))
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
@@ -114,12 +117,6 @@ class WideDeep(BaseModel):
 
         torch.autograd.set_detect_anomaly(True)
         # Make a list of theta for each feature
-        gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
-        gates_theta.requires_grad_(requires_grad=True)
-
-        # --- update for droprank start---
-        self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-4})
-        # --- update for droprank end---
 
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
         logging.info("************ Epoch=1 start ************")
@@ -137,7 +134,7 @@ class WideDeep(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta)
+                gates_prob = self._get_gates_prob(self.gates_theta)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -175,7 +172,7 @@ class WideDeep(BaseModel):
                     break
 
             # --- update for droprank start---
-            logging.info("\n Gates Theta: {}".format(gates_theta))
+            logging.info("\n Gates Theta: {}".format(self.gates_theta))
             # --- update for droprank end---
 
             if self._stop_training:
@@ -185,107 +182,12 @@ class WideDeep(BaseModel):
         logging.info("Training finished.")
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
-        print(gates_theta)
+        print(self.gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': gates_theta.tolist()})
+                                                  'feature_weight': self.gates_theta.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 
-    # def forward_with_fmcr(self, inputs, seed=2019):
-    #     X = self.get_inputs(inputs)
-    #     torch.manual_seed(seed)
-    #
-    #     # --- update for fmcr ---
-    #     feature_emb = self.embedding_layer(X, flatten_emb=True)
-    #     self.feature_emb.requires_grad_(requires_grad=True)
-    #     self.feature_emb_mean = torch.mean(self.feature_emb, axis=0)
-    #
-    #     self.feature_emb_delta_step = (self.feature_emb - self.feature_emb_mean) / self.interpolate_n
-    #     self.feature_emb_list = [self.feature_emb]
-    #     for i in range(self.interpolate_n):
-    #         self.feature_emb_list.append(self.feature_emb - (i + 1) * self.feature_emb_delta_step)
-    #     self.feature_emb = torch.concat(self.feature_emb_list, dim=0)
-    #     self.feature_emb.retain_grad()
-    #
-    #     logistic_output = self.feature_emb.sum(dim=1)
-    #
-    #     # --- update for fmcr ---
-    #
-    #     y_pred = logistic_output
-    #     y_pred += self.dnn(self.feature_emb.flatten(start_dim=1))
-    #     y_pred = self.output_activation(y_pred)
-    #     return_dict = {"y_pred": y_pred}
-    #     return return_dict
-    #
-    # def evaluate_with_fmcr_native(self, data_generator, metrics=None):
-    #     self.eval()
-    #     feature_importance_result, native_log_loss = self.evaluate_with_fmcr(data_generator, metrics=None)
-    #     feature_importance_result_sorted = feature_importance_result.sort_values(by='feature_weight', ascending=False)
-    #     feature_importance_result_sorted['cumsum_feature_weight'] = feature_importance_result_sorted[
-    #         'feature_weight'].cumsum()
-    #     logging.info('================= Fast MCR Result =================')
-    #     logging.info(feature_importance_result_sorted)
-    #     return native_log_loss, feature_importance_result
-    #
-    #
-    # def evaluate_with_fmcr(self, data_generator, metrics=None, seed=2019):
-    #     y_pred = []
-    #     y_true = []
-    #     group_id = []
-    #
-    #     fmcr_score_final_result = None
-    #
-    #     data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
-    #
-    #     for batch_data in data_generator:
-    #         return_dict = self.forward_with_fmcr(batch_data, seed)
-    #
-    #         # 进行一次梯度回传
-    #         y_true_fmcr = self.get_labels(batch_data)
-    #         y_true_fmcr = y_true_fmcr.repeat(self.interpolate_n + 1, 1)
-    #         loss = self.compute_loss(return_dict, y_true_fmcr)
-    #         loss.backward()
-    #         fmcr_gradient = self.feature_emb.grad
-    #
-    #         # 计算fmcr单batch指标
-    #         emb_size_sum = self.feature_emb.shape[1]
-    #         field_n = batch_data.shape[1] - 1
-    #         emb_size_single = int(emb_size_sum / field_n)
-    #
-    #         fmcr_field_gradient = torch.split(fmcr_gradient, emb_size_single, dim=1)
-    #         fmcr_field_delta = [i.repeat(self.interpolate_n + 1, 1) for i in
-    #                             torch.split(self.feature_emb_delta_step, emb_size_single, dim=1)]
-    #
-    #         fmcr_loss_delta = []
-    #         for i in range(field_n):
-    #             fmcr_loss_delta.append(torch.einsum('ij,ij->i', fmcr_field_gradient[i],
-    #                                                 fmcr_field_delta[i]).data.cpu().mean().detach().numpy())
-    #
-    #         # 计算fmcr累计batch指标
-    #         if fmcr_score_final_result is None:
-    #             fmcr_score_final_result = np.abs(np.array(fmcr_loss_delta))
-    #         else:
-    #             fmcr_score_final_result += np.abs(np.array(fmcr_loss_delta))
-    #         self.optimizer.zero_grad()
-    #
-    #         y_true_tmp = self.get_labels(batch_data).data.cpu().numpy().reshape(-1)
-    #         y_true.extend(y_true_tmp)
-    #         y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1)[:len(y_true_tmp)])
-    #
-    #     y_pred = np.array(y_pred, np.float64)
-    #     y_true = np.array(y_true, np.float64)
-    #     group_id = np.array(group_id) if len(group_id) > 0 else None
-    #
-    #     if metrics is not None:
-    #         val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
-    #     else:
-    #         val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
-    #     logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
-    #
-    #     # 处理成可读的特征重要性指标
-    #     feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-    #                                               'feature_weight': fmcr_score_final_result.tolist()})
-    #     return feature_importance_result, val_logs['logloss']
     def _get_gates_prob(self,gates_theta):
         gates_prob = gates_theta.clone()
         for i in range(gates_theta.shape[0]):
@@ -297,6 +199,6 @@ class WideDeep(BaseModel):
         u.requires_grad = False
         return torch.sigmoid((1.0 / 0.1) * (log(unit + EPS) - log(1 - unit + EPS) + log(u + EPS) - log(1 - u + EPS)))
 
-    def _get_featuremap_size(self,feature_map):
-        # 先写死每个维度的emb_size = 32，后续可以改成从feature_map中读取
-        return [32]*len(feature_map.features)
+    # def _get_featuremap_size(self,feature_map):
+    #     # 先写死每个维度的emb_size = 40，后续可以改成从feature_map中读取
+    #     return [40]*len(feature_map.features)

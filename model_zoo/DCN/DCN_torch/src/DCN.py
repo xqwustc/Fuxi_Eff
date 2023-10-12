@@ -69,6 +69,12 @@ class DCN(BaseModel):
             final_dim += dnn_hidden_units[-1]
         self.fc = nn.Linear(final_dim, 1) # [cross_part, dnn_part] -> logit
         self.learning_rate = learning_rate
+
+        # --- update for droprank start---
+        self.gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
+        self.gates_theta.requires_grad_(requires_grad=True)
+        # --- update for droprank end---
+
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()
@@ -117,20 +123,13 @@ class DCN(BaseModel):
 
     def forward_with_dr(self,inputs,gates_prob):
         X = self.get_inputs(inputs)
-        feature_emb = self.embedding_layer(X, flatten_emb=True)
-        # --- update for droprank start---
-        data_after_gates = feature_emb
+        feature_emb = self.embedding_layer(X)
 
-        # feature_emb_size[i] represents the embedding size of the i-th feature
-        feature_emb_size = self._get_featuremap_size(self.feature_map)
-
-        pre_idx = 0
-        for i in range(len(feature_emb_size)):
-            data_after_gates[:, pre_idx:pre_idx + feature_emb_size[i]] *= gates_prob[i]
-            pre_idx += feature_emb_size[i]
+        for i in range(len(self.feature_map.features)):
+            feature_emb[:,i:i+1,:] *= gates_prob[i]
         # --- update for droprank end---
 
-        feature_emb = data_after_gates
+        feature_emb = feature_emb.flatten(start_dim=1)
 
         cross_out = self.crossnet(feature_emb)
         if self.dnn is not None:
@@ -254,7 +253,7 @@ class DCN(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta)
+                gates_prob = self._get_gates_prob(self.gates_theta)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -264,7 +263,7 @@ class DCN(BaseModel):
                 loss = self.compute_loss(return_dict, y_true)
 
                 # --- update for droprank start---
-                loss += torch.sum(gates_prob)*1e-3
+                loss += torch.sum(gates_prob) * 1e-3
 
                 ####
                 # dot = make_dot(loss, params=dict(self.named_parameters()))
@@ -291,8 +290,8 @@ class DCN(BaseModel):
                 if self._stop_training:
                     break
 
-            # --- update for droprank start---
-            logging.info("\n Gates Theta: {}".format(gates_theta))
+                # --- update for droprank start---
+            logging.info("\n Gates Theta: {}".format(self.gates_theta))
             # --- update for droprank end---
 
             if self._stop_training:
@@ -302,9 +301,9 @@ class DCN(BaseModel):
         logging.info("Training finished.")
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
-        print(gates_theta)
+        print(self.gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': gates_theta.tolist()})
+                                                  'feature_weight': self.gates_theta.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 
