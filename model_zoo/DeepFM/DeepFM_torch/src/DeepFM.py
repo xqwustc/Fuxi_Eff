@@ -57,10 +57,10 @@ class DeepFM(BaseModel):
                              dropout_rates=net_dropout, 
                              batch_norm=batch_norm)
 
-        # --- update for droprank start---
-        self.gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
-        self.gates_theta.requires_grad_(requires_grad=True)
-        # --- update for droprank end---
+        # # --- update for droprank start---
+        # self.gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
+        # self.gates_theta.requires_grad_(requires_grad=True)
+        # # --- update for droprank end---
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
@@ -131,7 +131,7 @@ class DeepFM(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(self.gates_theta)
+                gates_prob = self._get_gates_prob(gates_theta)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -169,7 +169,7 @@ class DeepFM(BaseModel):
                     break
 
                 # --- update for droprank start---
-            logging.info("\n Gates Theta: {}".format(self.gates_theta))
+            logging.info("\n Gates Theta: {}".format(gates_theta))
             # --- update for droprank end---
 
             if self._stop_training:
@@ -179,9 +179,9 @@ class DeepFM(BaseModel):
         logging.info("Training finished.")
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
-        print(self.gates_theta)
+        print(gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': self.gates_theta.tolist()})
+                                                  'feature_weight': gates_theta.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 

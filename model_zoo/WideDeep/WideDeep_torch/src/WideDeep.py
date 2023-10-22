@@ -24,6 +24,9 @@ from tqdm import tqdm
 import sys
 import logging
 from torch import log
+import pandas as pd
+from tqdm import tqdm
+import sys
 
 EPS = 1e-6
 
@@ -52,7 +55,7 @@ class WideDeep(BaseModel):
         self.interpolate_n = 5
 
         self.lr_layer = LogisticRegression(feature_map, use_bias=False)
-        self.dnn = MLP_Block(input_dim=embedding_dim * feature_map.num_fields,
+        self.dnn = MLP_Block(input_dim=embedding_dim*len(feature_map.features),#input_dim=embedding_dim * feature_map.num_fields,
                              output_dim=1, 
                              hidden_units=hidden_units,
                              hidden_activations=hidden_activations,
@@ -61,8 +64,8 @@ class WideDeep(BaseModel):
                              batch_norm=batch_norm)
 
         # --- update for droprank start---
-        self.gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
-        self.gates_theta.requires_grad_(requires_grad=True)
+        # self.gates_theta = nn.Parameter(torch.ones(len(self.feature_map.features)) * 0.5)
+        # self.gates_theta.requires_grad_(requires_grad=True)
             # --- for widedeep only ---
         self.lr_embedding = FeatureEmbedding(self.feature_map, 1, use_pretrain=False, use_sharing=False)
             # --- for widedeep only ---
@@ -117,6 +120,12 @@ class WideDeep(BaseModel):
 
         torch.autograd.set_detect_anomaly(True)
         # Make a list of theta for each feature
+        gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_theta.requires_grad_(requires_grad=True)
+
+        # --- update for droprank start---
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-4})
+        # --- update for droprank end---
 
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
         logging.info("************ Epoch=1 start ************")
@@ -134,7 +143,7 @@ class WideDeep(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(self.gates_theta)
+                gates_prob = self._get_gates_prob(gates_theta)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -172,7 +181,7 @@ class WideDeep(BaseModel):
                     break
 
             # --- update for droprank start---
-            logging.info("\n Gates Theta: {}".format(self.gates_theta))
+            logging.info("\n Gates Theta: {}".format(gates_theta))
             # --- update for droprank end---
 
             if self._stop_training:
@@ -182,9 +191,9 @@ class WideDeep(BaseModel):
         logging.info("Training finished.")
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
-        print(self.gates_theta)
+        print(gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': self.gates_theta.tolist()})
+                                                  'feature_weight': gates_theta.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 

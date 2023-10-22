@@ -26,6 +26,7 @@ import sys
 import pandas as pd
 from utils import *
 from torch import log
+# from feat_select import AdaFS
 
 EPS = 1e-6
 class DCN(BaseModel):
@@ -70,10 +71,10 @@ class DCN(BaseModel):
         self.fc = nn.Linear(final_dim, 1) # [cross_part, dnn_part] -> logit
         self.learning_rate = learning_rate
 
-        # --- update for droprank start---
-        self.gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
-        self.gates_theta.requires_grad_(requires_grad=True)
-        # --- update for droprank end---
+        # # --- update for droprank start---
+        # self.gates_theta = nn.Parameter(torch.ones(len(self.feature_map.features)) * 0.5)
+        # self.gates_theta.requires_grad_(requires_grad=True)
+        # # --- update for droprank end---
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
@@ -122,6 +123,27 @@ class DCN(BaseModel):
         return return_dict
 
     def forward_with_dr(self,inputs,gates_prob):
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+
+        for i in range(len(self.feature_map.features)):
+            feature_emb[:,i:i+1,:] *= gates_prob[i]
+        # --- update for droprank end---
+
+        feature_emb = feature_emb.flatten(start_dim=1)
+
+        cross_out = self.crossnet(feature_emb)
+        if self.dnn is not None:
+            dnn_out = self.dnn(feature_emb)
+            final_out = torch.cat([cross_out, dnn_out], dim=-1)
+        else:
+            final_out = cross_out
+        y_pred = self.fc(final_out)
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def forward_with_adafs(self,inputs,gates_prob):
         X = self.get_inputs(inputs)
         feature_emb = self.embedding_layer(X)
 
@@ -228,7 +250,6 @@ class DCN(BaseModel):
         if self._eval_steps is None:
             self._eval_steps = self._steps_per_epoch
 
-        torch.autograd.set_detect_anomaly(True)
         # Make a list of theta for each feature
         gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
         gates_theta.requires_grad_(requires_grad=True)
@@ -253,7 +274,7 @@ class DCN(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(self.gates_theta)
+                gates_prob = self._get_gates_prob(gates_theta)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -291,7 +312,7 @@ class DCN(BaseModel):
                     break
 
                 # --- update for droprank start---
-            logging.info("\n Gates Theta: {}".format(self.gates_theta))
+            logging.info("\n Gates Theta: {}".format(gates_theta))
             # --- update for droprank end---
 
             if self._stop_training:
@@ -301,9 +322,103 @@ class DCN(BaseModel):
         logging.info("Training finished.")
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
-        print(self.gates_theta)
+        print(gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': self.gates_theta.tolist()})
+                                                  'feature_weight': gates_theta.tolist()})
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
+        return
+
+    def fit_for_adafs(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        # Make a list of theta for each feature
+
+        # --- update for adafs start---
+        # adaFS = AdaFS()
+        # feat_weight = adaFS(self.feature_map.features)
+        # --- update for adafs end---
+
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            self.selector = AdaFS()
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                # --- update for droprank start---
+                gates_prob = self._get_gates_prob(gates_theta)
+                return_dict = self.forward_with_dr(batch_data, gates_prob)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                # --- update for droprank start---
+                loss += torch.sum(gates_prob) * 1e-3
+
+                ####
+                # dot = make_dot(loss, params=dict(self.named_parameters()))
+                # dot.view()
+                ####
+
+                # --- update for droprank end---
+
+                loss.backward()
+
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_step()
+                if self._stop_training:
+                    break
+
+                # --- update for droprank start---
+            logging.info("\n Gates Theta: {}".format(gates_theta))
+            # --- update for droprank end---
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+        print(gates_theta)
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': gates_theta.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 
@@ -316,7 +431,9 @@ class DCN(BaseModel):
     def _get_prob(self,unit):
         u = torch.rand(1)
         u.requires_grad = False
+        u = u.to(device=self.device)
         return torch.sigmoid((1.0 / 0.1) * (log(unit + EPS) - log(1 - unit + EPS) + log(u + EPS) - log(1 - u + EPS)))
+
 
     def _get_featuremap_size(self,feature_map):
         # 先写死每个维度的emb_size = 32，后续可以改成从feature_map中读取

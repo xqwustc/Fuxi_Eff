@@ -20,8 +20,8 @@ import os
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
 
-sys.path.append('../../../fuxictr')
-sys.path.append('../../../')
+sys.path.append('../../fuxictr')
+sys.path.append('../../')
 
 # --- update for fmcr ---
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -64,8 +64,6 @@ if __name__ == '__main__':
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     # seed_everything(seed=params['seed'])
-
-    email.common_send('DCN_droprank_incre.py',params["data_format"])
 
     if params.get('spe_processor'):
         module_name = f"fuxictr.datasets.{params['spe_processor']}"
@@ -116,7 +114,7 @@ if __name__ == '__main__':
         topk_logloss_result.append(valid_result['logloss'])
         topk_auc_result.append(valid_result['AUC'])
 
-        email.common_send('DCN_droprank_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
+        email.common_send('FM_droprank_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
         del train_gen, valid_gen
         gc.collect()
 
