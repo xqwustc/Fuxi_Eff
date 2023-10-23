@@ -6,72 +6,49 @@ import torch.nn.functional as F
 class AdaFS(nn.Module):
     # This module will be wrapped around the outer layer of the CTR training model for feature selection, ultimately
     # returning the importance (in descending order) and feature IDs of each feature.
-    def __init__(self ,field_dims):
+    def __init__(self, field_num, embed_dim):
         super().__init__()
-        self.num = len(field_dims)
-        self.embed_dim = 16
-        self.mlp_dims = [16,8]
-        self.emb = EMB(field_dims[:self.num], self.embed_dim)
+        self.num = field_num
+        self.embed_dim = embed_dim
+        self.mlp_dims = [embed_dim,8]
         self.dropout = 0.2
-        self.mlp = MultiLayerPerceptron(input_dim=len(field_dims) * self.embed_dim,
+        self.mlp = MultiLayerPerceptron(input_dim=field_num * self.embed_dim,
                                         embed_dims=self.mlp_dims, output_layer=True, dropout=self.dropout)
-        self.controller = controller_mlp(self.dropout, input_dim=len(self.field_dims) * self.embed_dim,
-                                         embed_dims=[len(self.field_dims)])
-        self.UseController = self.controller
-        self.BN = nn.BatchNorm1d(self.embed_dim)
-        # TODO: What is k?
-        self.k = len(field_dims)
-        self.useWeight = True
-        self.reWeight = True
-        self.useBN = True
-        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        self.stage = -1
-    def __init__(self,args):
-        super().__init__()
-        self.num = len(args.field_dims)
-        self.embed_dim = args.embed_dim
-        self.emb = EMB(args.field_dims[:self.num],self.embed_dim)
-        self.mlp = MultiLayerPerceptron(input_dim=len(args.field_dims)*self.embed_dim,
-                                        embed_dims=args.mlp_dims, output_layer=True, dropout=args.dropout)
-        self.controller = controller_mlp(args, input_dim=len(args.field_dims)*self.embed_dim, embed_dims=[len(args.field_dims)])
+        self.controller = controller_mlp(self.dropout, input_dim=self.num * self.embed_dim,
+                                         embed_dims=[self.num])
         self.weight = 0
-        self.useBN = args.useBN
-        self.UseController = args.controller
+        self.useBN = True
+        self.UseController = True
         self.BN = nn.BatchNorm1d(self.embed_dim)
-        self.stage = -1
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
     def forward(self, field):
-        field = self.emb(field)
+        # field has been embedded as (batch_size, num_fields, embed_dim) like (10000, 39, 32)
         #对每个feature进行batchnorm
-        if self.useBN == True:
+        if self.useBN:
             field = self.BN(field)
-        if self.UseController and self.stage == 1:
+        if self.UseController:
             self.weight = self.controller(field)
             field = field * torch.unsqueeze(self.weight,1)
         input_mlp = field.flatten(start_dim=1).float()
-        res = self.mlp(input_mlp)
-        return torch.sigmoid(res.squeeze(1))
+        return input_mlp
 
-class MLP(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.num = len(args.field_dims)
-        self.embed_dim = args.embed_dim
-        self.emb = EMB(args.field_dims[:self.num],self.embed_dim)
-        self.mlp = MultiLayerPerceptron(input_dim=len(args.field_dims)*self.embed_dim,
-                                        embed_dims=args.mlp_dims, output_layer=True, dropout=args.dropout)
-        self.BN = nn.BatchNorm1d(self.embed_dim)
-
-    def forward(self,field):
-        field = self.emb(field)
-        field = self.BN(field)
-        input_mlp = field.flatten(start_dim=1).float()
-        res = self.mlp(input_mlp)
-        return torch.sigmoid(res.squeeze(1))
-
-def kmax_pooling(x, dim, k):
-    index = x.topk(k, dim=dim)[1].sort(dim=dim)[0]
-    return index, x.gather(dim, index)
+# class MLP(nn.Module):
+#     def __init__(self, args):
+#         super().__init__()
+#         self.num = len(args.field_dims)
+#         self.embed_dim = args.embed_dim
+#         self.emb = EMB(args.field_dims[:self.num],self.embed_dim)
+#         self.mlp = MultiLayerPerceptron(input_dim=len(args.field_dims)*self.embed_dim,
+#                                         embed_dims=args.mlp_dims, output_layer=True, dropout=args.dropout)
+#         self.BN = nn.BatchNorm1d(self.embed_dim)
+#
+#     def forward(self,field):
+#         field = self.emb(field)
+#         field = self.BN(field)
+#         input_mlp = field.flatten(start_dim=1).float()
+#         res = self.mlp(input_mlp)
+#         return torch.sigmoid(res.squeeze(1))
 
 class EMB(nn.Module):
     def __init__(self, field_dims, embed_dim):
@@ -121,7 +98,7 @@ class controller_mlp(nn.Module):
         super().__init__()
         self.inputdim = input_dim
         self.mlp = MultiLayerPerceptron(input_dim=self.inputdim,
-                                        embed_dims=embed_dims, output_layer=False, dropout=args.dropout)
+                                        embed_dims=embed_dims, output_layer=False, dropout=dropout)
         self.weight_init(self.mlp)
 
     def forward(self, emb_fields):

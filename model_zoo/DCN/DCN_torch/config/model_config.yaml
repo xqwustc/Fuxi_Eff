@@ -91,7 +91,7 @@ DCN_criteo:
     learning_rate: 1.0e-3
     embedding_regularizer: 0
     net_regularizer: 0
-    batch_size: 10000
+    batch_size: 10000  # 10000
     embedding_dim: 32
     dnn_hidden_units: [ 1024, 512, 256 ]
     dnn_activations: relu

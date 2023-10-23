@@ -26,7 +26,8 @@ import sys
 import pandas as pd
 from utils import *
 from torch import log
-# from feat_select import AdaFS
+import pandas as pd
+from feat_select.Selectors import AdaFS
 
 EPS = 1e-6
 class DCN(BaseModel):
@@ -75,6 +76,10 @@ class DCN(BaseModel):
         # self.gates_theta = nn.Parameter(torch.ones(len(self.feature_map.features)) * 0.5)
         # self.gates_theta.requires_grad_(requires_grad=True)
         # # --- update for droprank end---
+
+        # # --- update for AdaFS start---
+        self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
+        # # --- update for AdaFS end---
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
@@ -143,15 +148,12 @@ class DCN(BaseModel):
         return_dict = {"y_pred": y_pred}
         return return_dict
 
-    def forward_with_adafs(self,inputs,gates_prob):
+    def forward_with_adafs(self,inputs):
         X = self.get_inputs(inputs)
+
         feature_emb = self.embedding_layer(X)
-
-        for i in range(len(self.feature_map.features)):
-            feature_emb[:,i:i+1,:] *= gates_prob[i]
-        # --- update for droprank end---
-
-        feature_emb = feature_emb.flatten(start_dim=1)
+        # The embedding process for X will be in AdaFS
+        feature_emb = self.adafs(feature_emb.transpose(1,2))
 
         cross_out = self.crossnet(feature_emb)
         if self.dnn is not None:
@@ -235,6 +237,34 @@ class DCN(BaseModel):
         logging.info('================= Fast MCR Result =================')
         logging.info(feature_importance_result_sorted)
         return native_log_loss, feature_importance_result
+
+    def evaluate_with_pfi(self, data_generator, valid_result, metrics=None, seed=2019):
+        pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
+
+        ## FIXME: 1 means the label column
+        total_field = len(self.feature_map.features) +  1
+        for feat_idx in total_field:
+            if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
+                continue
+            perm_gen = self._permute_feature(data_generator, feat_idx)
+            cur_result = self.evaluate(perm_gen, metrics=metrics)
+            diff = pd.DataFrame([{
+                'AUC': cur_result['AUC'] - valid_result['AUC'],
+                'logloss': cur_result['logloss'] - valid_result['logloss']
+            }])
+            pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
+
+        pfi_score_res.insert(0,'feature_name',list(self.feature_map.features.keys()))
+        pfi_score_res.to_csv('pfi_score_res_origin.csv',index=False)
+
+        pfi_score_res['AUC'] = pfi_score_res['AUC'].abs()
+        pfi_score_res['logloss'] = pfi_score_res['logloss'].abs()
+        pfi_score_res.to_csv('pfi_score_res_abs.csv',index=False)
+
+        pfi_score_res = pfi_score_res.sort_values(by='AUC',ascending=False)
+        pfi_score_res.to_csv('pfi_score_res_byauc.csv',index=False)
+        return
+
 
     def fit_for_dr(self, data_generator, epochs=1, validation_data=None,
             max_gradient_norm=10., **kwargs):
@@ -342,20 +372,12 @@ class DCN(BaseModel):
         if self._eval_steps is None:
             self._eval_steps = self._steps_per_epoch
 
-        # Make a list of theta for each feature
-
-        # --- update for adafs start---
-        # adaFS = AdaFS()
-        # feat_weight = adaFS(self.feature_map.features)
-        # --- update for adafs end---
-
-
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
         logging.info("************ Epoch=1 start ************")
         for epoch in range(epochs):
             self._epoch_index = epoch
             self._batch_index = 0
-            self.selector = AdaFS()
+
             train_loss = 0
             self.train()
             if self._verbose == 0:
@@ -367,18 +389,14 @@ class DCN(BaseModel):
                 self._batch_index = batch_index
                 self._total_steps += 1
 
-                # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta)
-                return_dict = self.forward_with_dr(batch_data, gates_prob)
-                # --- update for droprank end---
+                # --- update for adafs start---
+                return_dict = self.forward_with_adafs(batch_data)
+                # --- update for adafs end---
 
                 self.optimizer.zero_grad()
 
                 y_true = self.get_labels(batch_data)
                 loss = self.compute_loss(return_dict, y_true)
-
-                # --- update for droprank start---
-                loss += torch.sum(gates_prob) * 1e-3
 
                 ####
                 # dot = make_dot(loss, params=dict(self.named_parameters()))
@@ -438,3 +456,25 @@ class DCN(BaseModel):
     def _get_featuremap_size(self,feature_map):
         # 先写死每个维度的emb_size = 32，后续可以改成从feature_map中读取
         return [32]*len(feature_map.features)
+
+    def _permute_feature(self,data_generator, feature_idx):
+        """
+        Permutes the values of a specific feature in each batch produced by the data_generator.
+
+        Args:
+        - data_generator: Original data generator.
+        - feature_idx: The index of the feature you want to permute.
+
+        Yields:
+        - Batch with permuted feature values.
+        """
+        for batch in data_generator:
+            # Deep copy to avoid modifying the original batch
+            permuted_batch = batch.clone()
+
+            # Permute the feature using PyTorch functions
+            perm = torch.randperm(permuted_batch.size(0))
+            permuted_batch[:, feature_idx] = permuted_batch[perm, feature_idx]
+
+            yield permuted_batch
+
