@@ -238,7 +238,7 @@ class DCN(BaseModel):
         logging.info(feature_importance_result_sorted)
         return native_log_loss, feature_importance_result
 
-    def evaluate_with_pfi(self, data_generator, valid_result, metrics=None, seed=2019):
+    def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
         pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
 
         ## FIXME: 1 means the label column
