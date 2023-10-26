@@ -33,6 +33,16 @@ class AdaFS(nn.Module):
         input_mlp = field.flatten(start_dim=1).float()
         return input_mlp
 
+    def forward_for_eval(self, field):
+        self.eval()
+        # field has been embedded as (batch_size, num_fields, embed_dim) like (10000, 39, 32)
+        #对每个feature进行batchnorm
+        if self.useBN:
+            field = self.BN(field)
+        if self.UseController:
+            self.weight = self.controller(field)
+        return self.weight
+
 # class MLP(nn.Module):
 #     def __init__(self, args):
 #         super().__init__()

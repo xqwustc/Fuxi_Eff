@@ -196,7 +196,57 @@ class WideDeep(BaseModel):
                                                   'feature_weight': gates_theta.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
+    def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
+        logging.info("Start evaluate with PFI-WD")
 
+        pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
+
+        ## FIXME: 1 means the label column
+        total_field = len(self.feature_map.features) +  1
+        for feat_idx in range(total_field):
+            if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
+                continue
+            perm_gen = self._permute_feature(data_generator, feat_idx)
+            cur_result = self.evaluate(perm_gen, metrics=metrics)
+            diff = pd.DataFrame([{
+                'AUC': cur_result['AUC'] - valid_result['AUC'],
+                'logloss': cur_result['logloss'] - valid_result['logloss']
+            }])
+            pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
+
+        # Add feature name
+        pfi_score_res.insert(0,'feature_name',list(self.feature_map.features.keys()))
+
+        # Get the absolute value of AUC & logloss
+        pfi_score_res['AUC'] = pfi_score_res['AUC'].abs()
+        pfi_score_res['logloss'] = pfi_score_res['logloss'].abs()
+
+        # Sort by AUC and see AUC as the feature_weight
+        pfi_score_res = pfi_score_res.sort_values(by='AUC',ascending=False)
+        pfi_score_res.insert(1, 'feature_weight', pfi_score_res['AUC'])
+        pfi_score_res.to_csv('feature_importance_result.csv',index=False)
+        return
+
+    def _permute_feature(self,data_generator, feature_idx):
+        """
+        Permutes the values of a specific feature in each batch produced by the data_generator.
+
+        Args:
+        - data_generator: Original data generator.
+        - feature_idx: The index of the feature you want to permute.
+
+        Yields:
+        - Batch with permuted feature values.
+        """
+        for batch in data_generator:
+            # Deep copy to avoid modifying the original batch
+            permuted_batch = batch.clone()
+
+            # Permute the feature using PyTorch functions
+            perm = torch.randperm(permuted_batch.size(0))
+            permuted_batch[:, feature_idx] = permuted_batch[perm, feature_idx]
+
+            yield permuted_batch
     def _get_gates_prob(self,gates_theta):
         gates_prob = gates_theta.clone()
         for i in range(gates_theta.shape[0]):

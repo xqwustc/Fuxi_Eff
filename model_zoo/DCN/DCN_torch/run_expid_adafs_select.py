@@ -86,6 +86,7 @@ if __name__ == '__main__':
     model = model_class(feature_map, **params)
     model.count_parameters()  # print number of parameters used in model
 
+
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
     email.common_send('AdaFS_select.py - Build Data',"")
     if args.get('cp',None) != None:
@@ -93,10 +94,16 @@ if __name__ == '__main__':
         model.load_state_dict(torch.load(args['cp']))
     else:
         model.fit_for_adafs(train_gen, validation_data=valid_gen, **params)
-    email.common_send('AdaFS_{}_select.py - Training', "".format(args.expid))
+    email.common_send('AdaFS_{}_select.py - Training', "".format(args['expid']))
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)
+    del train_gen, valid_gen
+    gc.collect()
+
+    logging.info('****** AdaFS Validation evaluation ******')
+    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+    model.evaluate_with_adafs(valid_gen,valid_result)
     del train_gen, valid_gen
     gc.collect()
 

@@ -20,8 +20,8 @@ import os
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
 
-sys.path.append('../../../fuxictr')
-sys.path.append('../../../')
+sys.path.append('../../fuxictr')
+sys.path.append('../../')
 # print(sys.path)
 
 import logging
@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
 
-    email.common_send('DCN_PFI_select.py - Build Data',"")
+    email.common_send('FM_PFI_select.py - Build Data',"")
 
     if args.get('cp',None) != None:
         print('load model from checkpoint')
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     else:
         model.fit(train_gen, validation_data=valid_gen, **params)
 
-    email.common_send('DCN_PFI_select.py - Training', "")
+    email.common_send('FM_PFI_select.py - Training', "")
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)
@@ -111,7 +111,7 @@ if __name__ == '__main__':
 
     logging.info('****** Validation with PFI *******')
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    model.evaluate_with_pfi(valid_gen)
+    model.evaluate_with_pfi(valid_gen,valid_result)
     del train_gen, valid_gen
     gc.collect()
     # --- update for pfi end ---
