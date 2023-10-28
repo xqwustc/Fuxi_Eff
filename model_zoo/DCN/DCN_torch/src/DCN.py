@@ -276,7 +276,7 @@ class DCN(BaseModel):
         pfi_score_res.to_csv('feature_importance_result.csv',index=False)
         return
 
-    def evaluate_with_adafs(self, data_generator, metrics=None,seed = 2019):
+    def evaluate_with_adafs(self, data_generator,seed = 2019):
         self.eval()
         data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
 
@@ -296,7 +296,6 @@ class DCN(BaseModel):
         # 处理成可读的特征重要性指标
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
                                                   'feature_weight': np.squeeze(weight.numpy()).tolist()})
-        feature_importance_result.to_csv('feature_importance_result_origin.csv', index=False)
 
         feature_importance_result = feature_importance_result.sort_values(by='feature_weight', ascending=False)
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)

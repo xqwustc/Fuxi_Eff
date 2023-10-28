@@ -65,7 +65,7 @@ if __name__ == '__main__':
     logging.info("Params: " + print_to_json(params))
     # seed_everything(seed=params['seed'])
 
-    email.common_send('DCN_droprank_incre.py',params["data_format"])
+    email.common_send('DCN_incre.py',params["data_format"])
 
     if params.get('spe_processor'):
         module_name = f"fuxictr.datasets.{params['spe_processor']}"

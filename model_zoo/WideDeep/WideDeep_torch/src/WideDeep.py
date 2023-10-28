@@ -26,6 +26,7 @@ import logging
 from torch import log
 import pandas as pd
 from tqdm import tqdm
+from feat_select.Selectors import AdaFS
 import sys
 
 EPS = 1e-6
@@ -71,6 +72,10 @@ class WideDeep(BaseModel):
             # --- for widedeep only ---
         # --- update for droprank end---
 
+        # # --- update for AdaFS start---
+        self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
+        # # --- update for AdaFS end---
+
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()
@@ -81,6 +86,19 @@ class WideDeep(BaseModel):
         """
         X = self.get_inputs(inputs)
         feature_emb = self.embedding_layer(X)
+        y_pred = self.lr_layer(X)
+        y_pred += self.dnn(feature_emb.flatten(start_dim=1))
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def forward_with_adafs(self,inputs):
+        X = self.get_inputs(inputs)
+
+        feature_emb = self.embedding_layer(X)
+        # The embedding process for X will be in AdaFS
+        feature_emb = self.adafs(feature_emb.transpose(1,2))
+
         y_pred = self.lr_layer(X)
         y_pred += self.dnn(feature_emb.flatten(start_dim=1))
         y_pred = self.output_activation(y_pred)
@@ -104,6 +122,81 @@ class WideDeep(BaseModel):
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
+
+    def forward_with_adafs_eval(self,inputs,seed=2019):
+        self.eval()
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        # The embedding process for X will be in AdaFS
+        batch_weight = self.adafs.forward_for_eval(feature_emb.transpose(1,2))
+        return batch_weight
+
+    def fit_for_adafs(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                # --- update for adafs start---
+                return_dict = self.forward_with_adafs(batch_data)
+                # --- update for adafs end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                loss.backward()
+
+                #print(self.adafs.controller.mlp.mlps[0][0].weight.grad)
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_step()
+                if self._stop_training:
+                    break
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+        return
+
     def fit_for_dr(self, data_generator, epochs=1, validation_data=None,
                    max_gradient_norm=10., **kwargs):
         self.valid_gen = validation_data
@@ -225,6 +318,32 @@ class WideDeep(BaseModel):
         pfi_score_res = pfi_score_res.sort_values(by='AUC',ascending=False)
         pfi_score_res.insert(1, 'feature_weight', pfi_score_res['AUC'])
         pfi_score_res.to_csv('feature_importance_result.csv',index=False)
+        return
+
+    def evaluate_with_adafs(self, data_generator,seed = 2019):
+        self.eval()
+        data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+
+        weight = torch.zeros(1,len(self.feature_map.features))
+
+        for batch_data in data_generator:
+            # Get the batch weight from validation dataset, and will get a (n*feature_num) matrix
+            batch_weight = self.forward_with_adafs_eval(batch_data, seed)
+            batch_weight_use = batch_weight.cpu().detach()
+            batch_weight_use = batch_weight_use.sum(dim=0,keepdim=True)
+            # print('batch_weight_use', batch_weight_use)
+            weight += batch_weight_use
+
+        # 2-Norm the weight
+        weight /= torch.norm(weight)
+
+        # 处理成可读的特征重要性指标
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': np.squeeze(weight.numpy()).tolist()})
+
+        feature_importance_result = feature_importance_result.sort_values(by='feature_weight', ascending=False)
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
+
         return
 
     def _permute_feature(self,data_generator, feature_idx):

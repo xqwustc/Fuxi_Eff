@@ -111,7 +111,7 @@ if __name__ == '__main__':
 
     logging.info('****** Validation with PFI *******')
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    model.evaluate_with_pfi(valid_gen)
+    model.evaluate_with_pfi(valid_gen,valid_result)
     del train_gen, valid_gen
     gc.collect()
     # --- update for pfi end ---
