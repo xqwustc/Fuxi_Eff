@@ -88,13 +88,13 @@ if __name__ == '__main__':
 
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    email.common_send('AdaFS_select.py - Build Data',"")
+    # email.common_send('AdaFS_select.py - Build Data',"")
     if args.get('cp',None) != None:
         print('load model from checkpoint')
         model.load_state_dict(torch.load(args['cp']))
     else:
         model.fit_for_adafs(train_gen, validation_data=valid_gen, **params)
-    email.common_send('AdaFS_{}_select.py - Training', "".format(args['expid']))
+    # email.common_send('AdaFS_{}_select.py - Training', "".format(args['expid']))
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)

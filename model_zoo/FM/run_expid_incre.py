@@ -114,7 +114,7 @@ if __name__ == '__main__':
         topk_logloss_result.append(valid_result['logloss'])
         topk_auc_result.append(valid_result['AUC'])
 
-        email.common_send('FM_droprank_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
+        # email.common_send('FM_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
         del train_gen, valid_gen
         gc.collect()
 

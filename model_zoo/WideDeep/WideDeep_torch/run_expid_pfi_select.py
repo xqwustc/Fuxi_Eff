@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
 
-    email.common_send('WD_PFI_select.py - Build Data',"")
+    # email.common_send('WD_PFI_select.py - Build Data',"")
 
     if args.get('cp',None) != None:
         print('load model from checkpoint')
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     else:
         model.fit(train_gen, validation_data=valid_gen, **params)
 
-    email.common_send('WD_PFI_select.py - Training', "")
+    # email.common_send('WD_PFI_select.py - Training', "")
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)

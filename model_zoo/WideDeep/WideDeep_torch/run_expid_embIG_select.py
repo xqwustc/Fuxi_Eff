@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
 
-    email.common_send('DCN_IG_select.py - Ava - Build Data',"")
+    # email.common_send('WD_IG_select.py - Ava - Build Data',"")
 
     if args.get('cp',None) != None:
         print('load model from checkpoint')
