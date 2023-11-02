@@ -30,6 +30,7 @@ from feat_select.Selectors import AdaFS
 import sys
 
 EPS = 1e-6
+LR = 1e-4 # 1e-3
 
 class WideDeep(BaseModel):
     def __init__(self, 
@@ -246,7 +247,7 @@ class WideDeep(BaseModel):
                 loss = self.compute_loss(return_dict, y_true)
 
                 # --- update for droprank start---
-                loss += torch.sum(gates_prob) * 1e-3
+                loss += torch.sum(gates_prob) * LR
 
                 ####
                 # dot = make_dot(loss, params=dict(self.named_parameters()))

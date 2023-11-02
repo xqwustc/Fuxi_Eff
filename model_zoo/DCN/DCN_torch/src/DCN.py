@@ -468,10 +468,11 @@ class DCN(BaseModel):
         return gates_prob
 
     def _get_prob(self,unit):
-        u = torch.rand(1)
+        SIGMA = 0.5
+        u = torch.randn(1)*SIGMA
         u.requires_grad = False
         u = u.to(device=self.device)
-        return torch.sigmoid((1.0 / 0.1) * (log(unit + EPS) - log(1 - unit + EPS) + log(u + EPS) - log(1 - u + EPS)))
+        return torch.sigmoid((1.0 / 0.1) * (unit + u))
 
 
     def _get_featuremap_size(self,feature_map):
