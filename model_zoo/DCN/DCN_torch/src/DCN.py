@@ -321,8 +321,12 @@ class DCN(BaseModel):
         gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
         gates_theta.requires_grad_(requires_grad=True)
 
+        gates_sigma = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_sigma.requires_grad_(requires_grad=True)
+
         # --- update for droprank start---
-        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate*0.1})
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate * 0.1})
+        self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate * 0.1})
         # --- update for droprank end---
 
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
@@ -341,7 +345,7 @@ class DCN(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta)
+                gates_prob = self._get_gates_prob(gates_theta,gates_sigma)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -351,7 +355,7 @@ class DCN(BaseModel):
                 loss = self.compute_loss(return_dict, y_true)
 
                 # --- update for droprank start---
-                loss += torch.sum(gates_prob) * 1e-3
+                loss += (torch.sum(gates_prob)) * 1e-3
 
                 ####
                 # dot = make_dot(loss, params=dict(self.named_parameters()))
@@ -391,7 +395,8 @@ class DCN(BaseModel):
         self.load_weights(self.checkpoint)
         print(gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': gates_theta.tolist()})
+                                                  'feature_weight': gates_theta.tolist(),
+                                                  'feature_sigma': gates_sigma.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 
@@ -461,18 +466,21 @@ class DCN(BaseModel):
         self.load_weights(self.checkpoint)
         return
 
-    def _get_gates_prob(self,gates_theta):
+    def _get_gates_prob(self,gates_theta,gates_sigma):
+        assert len(gates_theta) == len(gates_sigma), "gates_theta and gates_sigma should have the same length"
         gates_prob = gates_theta.clone()
         for i in range(gates_theta.shape[0]):
-            gates_prob[i] = self._get_prob(gates_theta[i])
+            gates_prob[i] = self._get_prob(gates_theta[i],gates_sigma[i])
         return gates_prob
 
-    def _get_prob(self,unit):
-        SIGMA = 0.5
-        u = torch.randn(1)*SIGMA
-        u.requires_grad = False
-        u = u.to(device=self.device)
-        return torch.sigmoid((1.0 / 0.1) * (unit + u))
+    def _get_prob(self,unit,sigma_unit):
+        eps = torch.randn(1)*sigma_unit
+
+        # u = torch.randn(1)*sigma_unit
+        # u.requires_grad = False
+        # u = u.to(device=self.device)
+
+        return torch.sigmoid((1.0 / 0.1) * (unit + eps))
 
 
     def _get_featuremap_size(self,feature_map):

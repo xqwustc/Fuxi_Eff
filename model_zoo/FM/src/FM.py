@@ -45,6 +45,7 @@ class FM(BaseModel):
                                  embedding_regularizer=regularizer, 
                                  net_regularizer=regularizer,
                                  **kwargs)
+        self.learning_rate = learning_rate
         self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
         self.fm = FactorizationMachine(feature_map)
 
@@ -119,8 +120,12 @@ class FM(BaseModel):
         gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
         gates_theta.requires_grad_(requires_grad=True)
 
+        gates_sigma = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_sigma.requires_grad_(requires_grad=True)
+
         # --- update for droprank start---
-        self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-4})
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate * 0.1})
+        self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate * 0.1})
         # --- update for droprank end---
 
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
@@ -139,7 +144,7 @@ class FM(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta)
+                gates_prob = self._get_gates_prob(gates_theta,gates_sigma)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -189,7 +194,8 @@ class FM(BaseModel):
         self.load_weights(self.checkpoint)
         print(gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': gates_theta.tolist()})
+                                                  'feature_weight': gates_theta.tolist(),
+                                                  'feature_sigma': gates_sigma.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 
@@ -337,14 +343,19 @@ class FM(BaseModel):
         self.load_weights(self.checkpoint)
         return
 
-    def _get_gates_prob(self,gates_theta):
+    def _get_gates_prob(self, gates_theta, gates_sigma):
+        assert len(gates_theta) == len(gates_sigma), "gates_theta and gates_sigma should have the same length"
         gates_prob = gates_theta.clone()
         for i in range(gates_theta.shape[0]):
-            gates_prob[i] = self._get_prob(gates_theta[i])
+            gates_prob[i] = self._get_prob(gates_theta[i], gates_sigma[i])
         return gates_prob
 
-    def _get_prob(self,unit):
-        u = torch.rand(1)
-        u.requires_grad = False
-        return torch.sigmoid((1.0 / 0.1) * (log(unit + EPS) - log(1 - unit + EPS) + log(u + EPS) - log(1 - u + EPS)))
+    def _get_prob(self, unit, sigma_unit):
+        eps = torch.randn(1) * sigma_unit
+
+        # u = torch.randn(1)*sigma_unit
+        # u.requires_grad = False
+        # u = u.to(device=self.device)
+
+        return torch.sigmoid((1.0 / 0.1) * (unit + eps))
 
