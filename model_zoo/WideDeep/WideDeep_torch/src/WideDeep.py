@@ -55,6 +55,7 @@ class WideDeep(BaseModel):
         self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
 
         self.interpolate_n = 5
+        self.learning_rate = learning_rate
 
         self.lr_layer = LogisticRegression(feature_map, use_bias=False)
         self.dnn = MLP_Block(input_dim=embedding_dim*len(feature_map.features),#input_dim=embedding_dim * feature_map.num_fields,
@@ -217,8 +218,12 @@ class WideDeep(BaseModel):
         gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
         gates_theta.requires_grad_(requires_grad=True)
 
+        gates_sigma = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_sigma.requires_grad_(requires_grad=True)
+
         # --- update for droprank start---
         self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-4})
+        self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate * 0.1})
         # --- update for droprank end---
 
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
@@ -237,7 +242,7 @@ class WideDeep(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta)
+                gates_prob = self._get_gates_prob(gates_theta,gates_sigma)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -287,7 +292,8 @@ class WideDeep(BaseModel):
         self.load_weights(self.checkpoint)
         print(gates_theta)
         feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': gates_theta.tolist()})
+                                                  'feature_weight': gates_theta.tolist(),
+                                                  'feature_sigma': gates_sigma.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
     def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
@@ -367,16 +373,22 @@ class WideDeep(BaseModel):
             permuted_batch[:, feature_idx] = permuted_batch[perm, feature_idx]
 
             yield permuted_batch
-    def _get_gates_prob(self,gates_theta):
+
+    def _get_gates_prob(self, gates_theta, gates_sigma):
+        assert len(gates_theta) == len(gates_sigma), "gates_theta and gates_sigma should have the same length"
         gates_prob = gates_theta.clone()
         for i in range(gates_theta.shape[0]):
-            gates_prob[i] = self._get_prob(gates_theta[i])
+            gates_prob[i] = self._get_prob(gates_theta[i], gates_sigma[i])
         return gates_prob
 
-    def _get_prob(self,unit):
-        u = torch.rand(1)
-        u.requires_grad = False
-        return torch.sigmoid((1.0 / 0.1) * (log(unit + EPS) - log(1 - unit + EPS) + log(u + EPS) - log(1 - u + EPS)))
+    def _get_prob(self, unit, sigma_unit):
+        eps = torch.randn(1) * sigma_unit
+
+        # u = torch.randn(1)*sigma_unit
+        # u.requires_grad = False
+        # u = u.to(device=self.device)
+
+        return torch.sigmoid((1.0 / 0.1) * (unit + eps))
 
     # def _get_featuremap_size(self,feature_map):
     #     # 先写死每个维度的emb_size = 40，后续可以改成从feature_map中读取
