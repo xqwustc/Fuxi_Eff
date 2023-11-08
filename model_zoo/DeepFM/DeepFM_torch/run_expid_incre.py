@@ -97,7 +97,7 @@ if __name__ == '__main__':
 
     cur_AUC = 0
     total_times = 0
-    SOTA = 0.79305
+    SOTA = 0.79315
     while cur_AUC < SOTA:
         for i in range(8, 12):
             topk_params = copy.deepcopy(params)

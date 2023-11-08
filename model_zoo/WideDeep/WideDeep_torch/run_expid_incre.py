@@ -121,7 +121,7 @@ if __name__ == '__main__':
     #     gc.collect()
     cur_AUC = 0
     total_times = 0
-    SOTA = 0.79285
+    SOTA = 0.79295
     while cur_AUC < SOTA:
         for i in range(8, 13):
             topk_params = copy.deepcopy(params)
