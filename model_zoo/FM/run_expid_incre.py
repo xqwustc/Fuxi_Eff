@@ -119,10 +119,12 @@ if __name__ == '__main__':
     #     gc.collect()
 
     cur_AUC = 0
+    cur_logloss = 1
     total_times = 0
-    SOTA = 0.7843
-    while cur_AUC < SOTA:
-        for i in range(8, 15):
+    SOTA_AUC = 0.78395
+    SOTA_logloss = 0.37764
+    while cur_AUC < SOTA_AUC or cur_logloss > SOTA_logloss:
+        for i in range(8, 12):
             topk_params = copy.deepcopy(params)
             topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
             logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
@@ -142,12 +144,13 @@ if __name__ == '__main__':
             topk_logloss_result.append(valid_result['logloss'])
             topk_auc_result.append(valid_result['AUC'])
             cur_AUC = valid_result['AUC']
+            cur_logloss = valid_result['logloss']
 
             # email.common_send('DCN_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
             del train_gen, valid_gen
             gc.collect()
 
-            if cur_AUC >= SOTA:
+            if cur_AUC >= SOTA_AUC and cur_logloss <= SOTA_logloss:
                 break
 
         # Log times with color
