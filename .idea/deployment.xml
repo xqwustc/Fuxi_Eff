@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="bb@36447s3e93.imdo.co:2278 password (2)" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@121.4.138.132:21288 password" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="502">
         <serverdata>
@@ -37,6 +37,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="root@121.4.138.132:21288 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/Stev/proj/FuxiCTR" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="root@connect.beijinga.seetacloud.com:37689 password">
         <serverdata>
           <mappings>
@@ -54,18 +61,11 @@
       <paths name="root@op.wwooww.cn:35600 password">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/Stev/proj/FuxiCTR" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
       <paths name="root@op.wwooww.cn:35600 password (2)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="root@op.wwooww.cn:35600 password (3)">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
@@ -111,6 +111,13 @@
         <serverdata>
           <mappings>
             <mapping deploy="/home/bb/proj\FuxiCTR" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="zxk@222.187.232.112:15907 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

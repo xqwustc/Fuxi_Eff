@@ -121,7 +121,7 @@ if __name__ == '__main__':
     cur_AUC = 0
     cur_logloss = 1
     total_times = 0
-    SOTA_AUC = 0.78395
+    SOTA_AUC = 1
     SOTA_logloss = 0.37764
     while cur_AUC < SOTA_AUC or cur_logloss > SOTA_logloss:
         for i in range(8, 12):

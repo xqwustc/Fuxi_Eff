@@ -201,7 +201,6 @@ class FM(BaseModel):
 
     def evaluate_with_pfi(self, data_generator, valid_result=None, metrics=None, seed=2019):
         logging.info("Start evaluate with PFI-FM")
-
         pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
 
         ## FIXME: 1 means the label column
@@ -319,7 +318,6 @@ class FM(BaseModel):
 
                 loss.backward()
 
-                #print(self.adafs.controller.mlp.mlps[0][0].weight.grad)
 
                 nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
                 self.optimizer.step()
