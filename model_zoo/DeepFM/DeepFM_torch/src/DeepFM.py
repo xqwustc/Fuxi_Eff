@@ -143,8 +143,8 @@ class DeepFM(BaseModel):
         gates_sigma.requires_grad_(requires_grad=True)
 
         # --- update for droprank start---
-        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate * 0.1})
-        self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate * 0.1})
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-2})
+        self.optimizer.add_param_group({'params': gates_sigma, 'lr': 1e-2})
         # --- update for droprank end---
 
 
@@ -174,7 +174,7 @@ class DeepFM(BaseModel):
                 loss = self.compute_loss(return_dict, y_true)
 
                 # --- update for droprank start---
-                loss += torch.sum(gates_prob) * 1e-3
+                loss += torch.sum(gates_prob) * 1e-4
 
                 ####
                 # dot = make_dot(loss, params=dict(self.named_parameters()))
