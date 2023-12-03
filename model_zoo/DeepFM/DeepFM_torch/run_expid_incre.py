@@ -94,42 +94,45 @@ if __name__ == '__main__':
     topk_column_name = []
     topk_logloss_result = []
     topk_auc_result = []
+    #
+    # cur_AUC = 0
+    # total_times = 0
+    # SOTA = 0.79315
+    # while cur_AUC < SOTA:
+    incre = 10
+    # for i in range(8, 12):
+    for i in range(incre-1, df.shape[0]+incre-1, incre):
+        i = min(i, df.shape[0]-1)
+        topk_params = copy.deepcopy(params)
+        topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
+        logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
+                                                                          len(topk_params['use_features'])))
+        topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
+        topk_feature_map.load(feature_map_json, topk_params)
 
-    cur_AUC = 0
-    total_times = 0
-    SOTA = 0.79315
-    while cur_AUC < SOTA:
-        for i in range(8, 12):
-            topk_params = copy.deepcopy(params)
-            topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
-            logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
-                                                                              len(topk_params['use_features'])))
-            topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
-            topk_feature_map.load(feature_map_json, topk_params)
+        model_class = getattr(model_zoo, topk_params['model'])
+        topk_model = model_class(topk_feature_map, **topk_params)
+        topk_model.count_parameters()  # print number of parameters used in model
 
-            model_class = getattr(model_zoo, topk_params['model'])
-            topk_model = model_class(topk_feature_map, **topk_params)
-            topk_model.count_parameters()  # print number of parameters used in model
+        train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
+        topk_model.fit(train_gen, validation_data=valid_gen, **params)
+        valid_result = topk_model.evaluate(valid_gen)
 
-            train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
-            topk_model.fit(train_gen, validation_data=valid_gen, **params)
-            valid_result = topk_model.evaluate(valid_gen)
+        topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
+        topk_logloss_result.append(valid_result['logloss'])
+        topk_auc_result.append(valid_result['AUC'])
+        cur_AUC = valid_result['AUC']
 
-            topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
-            topk_logloss_result.append(valid_result['logloss'])
-            topk_auc_result.append(valid_result['AUC'])
-            cur_AUC = valid_result['AUC']
+        # email.common_send('DCN_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
+        del train_gen, valid_gen
+        gc.collect()
 
-            # email.common_send('DCN_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
-            del train_gen, valid_gen
-            gc.collect()
+        # if cur_AUC >= SOTA:
+        #     break
 
-            if cur_AUC >= SOTA:
-                break
-
-        # Log times with color
-        total_times += 1
-        logging.info('Time: {}'.format(total_times))
+    # Log times with color
+    # total_times += 1
+    # logging.info('Time: {}'.format(total_times))
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
