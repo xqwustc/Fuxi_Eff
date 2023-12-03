@@ -23,7 +23,7 @@ import logging
 from tqdm import tqdm
 import sys
 import pandas as pd
-from utils import *
+# from utils import *
 from torch import log
 import pandas as pd
 from feat_select.Selectors import AdaFS
@@ -324,8 +324,8 @@ class DCN(BaseModel):
         gates_sigma.requires_grad_(requires_grad=True)
 
         # --- update for droprank start---
-        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate * 0.1})
-        self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate * 0.1})
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate})
+        self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate})
         # --- update for droprank end---
 
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
