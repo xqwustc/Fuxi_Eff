@@ -121,3 +121,25 @@ DeepFM_avazu: # This is a config template
     seed: 2019
     monitor: {'AUC': 1, 'logloss': -1}
     monitor_mode: 'max'
+
+DeepFM_iflychu: # This is a config template
+    model: DeepFM
+    dataset_id: ifly_chu
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [ 300, 300, 300 ]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 4096
+    embedding_dim: 40
+    epochs: 100
+    shuffle: True
+    seed: 2019
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
