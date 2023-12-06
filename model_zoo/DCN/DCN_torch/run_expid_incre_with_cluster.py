@@ -96,50 +96,57 @@ if __name__ == '__main__':
     topk_logloss_result = []
     topk_auc_result = []
 
+    incre = 10
     # for i in range(df.shape[0]):
     # for i in range(df.shape[0]-1, 11, -1):
-    TIMES = 10
-    while TIMES > 0:
-        TIMES -= 1
-        for i in range(9, 13):
-            topk_params = copy.deepcopy(params)
-            cur_features_rows = df.iloc[:i + 1, :]
+    # TIMES = 10
+    # while TIMES > 0:
+    #     TIMES -= 1
+    # for i in range(9, 13):
+    # for i in [139,df.shape[0]-1]:
+    # for i in range(8, 12):
+    for i in range(incre - 1, df.shape[0] + incre - 1, incre):
+        topk_params = copy.deepcopy(params)
+        cur_features_rows = df.iloc[:i + 1, :]
 
-            # feature_name and label(final label) of cluster_df will be used in FeatureMap
-            cluster_df = cluster_features(cur_features_rows)
+        # feature_name and label(final label) of cluster_df will be used in FeatureMap
+        cluster_df = cluster_features(cur_features_rows)
 
-            topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
-            logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
-                                                                              len(topk_params['use_features'])))
-            topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
-            topk_feature_map.load(feature_map_json, topk_params)
+        topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
+        logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
+                                                                          len(topk_params['use_features'])))
+        topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
+        topk_feature_map.load(feature_map_json, topk_params)
 
-            # TODO: adaptively generate size_list
-            size_list = [32, 16, 8]
-            # modify feature_map embedding_dim by cluster_list
-            for idx, row in cluster_df.iterrows():
-                cur_feat_name = row['feature_name']
-                assert cur_feat_name in topk_feature_map.features.keys(), \
-                    'feature_name {} not in topk_feature_map'.format(cur_feat_name)
-                topk_feature_map.features[cur_feat_name]['embedding_dim'] = size_list[row['label']]
-                # Output the size of each feature
-                logging.info('--- Feature {} with size {}'.format(cur_feat_name, size_list[row['label']]))
+        # TODO: adaptively generate size_list
+        size_list = [32, 16, 8]
+        # size_list = [32,32,32]
+        # modify feature_map embedding_dim by cluster_list
+        for idx, row in cluster_df.iterrows():
+            cur_feat_name = row['feature_name']
+            assert cur_feat_name in topk_feature_map.features.keys(), \
+                'feature_name {} not in topk_feature_map'.format(cur_feat_name)
+            topk_feature_map.features[cur_feat_name]['embedding_dim'] = size_list[row['label']]
+            # Output the size of each feature
+            logging.info('--- Feature {} with size {}'.format(cur_feat_name, size_list[row['label']]))
 
-            model_class = getattr(model_zoo, topk_params['model'])
-            topk_model = model_class(topk_feature_map, **topk_params)
-            topk_model.count_parameters()  # print number of parameters used in model
+        model_class = getattr(model_zoo, topk_params['model'])
+        topk_model = model_class(topk_feature_map, **topk_params)
+        topk_model.count_parameters()  # print number of parameters used in model
 
-            train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
-            topk_model.fit(train_gen, validation_data=valid_gen, **params)
-            valid_result = topk_model.evaluate(valid_gen)
+        train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
+        topk_model.fit(train_gen, validation_data=valid_gen, **params)
 
-            topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
-            topk_logloss_result.append(valid_result['logloss'])
-            topk_auc_result.append(valid_result['AUC'])
+        test_gen = H5DataLoader(topk_feature_map, stage='test', **params).make_iterator()
+        valid_result = topk_model.evaluate(test_gen)
 
-            # email.common_send('FM_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
-            del train_gen, valid_gen
-            gc.collect()
+        topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
+        topk_logloss_result.append(valid_result['logloss'])
+        topk_auc_result.append(valid_result['AUC'])
+
+        # email.common_send('FM_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
+        del train_gen, valid_gen
+        gc.collect()
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
