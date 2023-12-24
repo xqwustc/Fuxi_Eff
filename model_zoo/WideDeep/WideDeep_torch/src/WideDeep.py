@@ -26,11 +26,14 @@ import logging
 from torch import log
 import pandas as pd
 from tqdm import tqdm
-from feat_select.Selectors import AdaFS
+from feat_select.AdaFS_module import AdaFS
 import sys
+from model_zoo.utils import get_gates_prob_my,get_sum_feature_dimisions,get_gates_prob_autofield
+from itertools import cycle
+import torch.optim as optim
 
 EPS = 1e-6
-LR = 1e-4 # 1e-3
+lamda = 1e-5 # 1e-3
 
 class WideDeep(BaseModel):
     def __init__(self, 
@@ -58,7 +61,8 @@ class WideDeep(BaseModel):
         self.learning_rate = learning_rate
 
         self.lr_layer = LogisticRegression(feature_map, use_bias=False)
-        self.dnn = MLP_Block(input_dim=embedding_dim*len(feature_map.features),#input_dim=embedding_dim * feature_map.num_fields,
+        self.dnn = MLP_Block(input_dim=get_sum_feature_dimisions(self.embedding_layer),
+                             #embedding_dim*len(feature_map.features),#input_dim=embedding_dim * feature_map.num_fields,
                              output_dim=1, 
                              hidden_units=hidden_units,
                              hidden_activations=hidden_activations,
@@ -87,9 +91,11 @@ class WideDeep(BaseModel):
         Inputs: [X,y]
         """
         X = self.get_inputs(inputs)
-        feature_emb = self.embedding_layer(X)
+        # feature_emb = self.embedding_layer(X)
+        feature_emb = self.embedding_layer(X,flatten_emb=True)
         y_pred = self.lr_layer(X)
-        y_pred += self.dnn(feature_emb.flatten(start_dim=1))
+        # y_pred += self.dnn(feature_emb.flatten(start_dim=1))
+        y_pred += self.dnn(feature_emb)
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
@@ -108,6 +114,24 @@ class WideDeep(BaseModel):
         return return_dict
 
     def forward_with_dr(self,inputs,gates_prob):
+        X = self.get_inputs(inputs)
+
+        feature_emb = self.embedding_layer(X)
+        emb_weights = self.lr_embedding(X)
+        # --- update for droprank start---
+        for i in range(len(self.feature_map.features)):
+            feature_emb[:,i:i+1,:] *= gates_prob[i]
+            emb_weights[:,i:i+1,:] *= gates_prob[i]
+
+
+        # --- update for droprank end---
+        y_pred = emb_weights.sum(dim=1)
+        y_pred += self.dnn(feature_emb.flatten(start_dim=1))
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def forward_with_autofield(self,inputs,gates_prob):
         X = self.get_inputs(inputs)
 
         feature_emb = self.embedding_layer(X)
@@ -222,7 +246,7 @@ class WideDeep(BaseModel):
         gates_sigma.requires_grad_(requires_grad=True)
 
         # --- update for droprank start---
-        self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-4})
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate * 0.1})
         self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate * 0.1})
         # --- update for droprank end---
 
@@ -242,7 +266,7 @@ class WideDeep(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta,gates_sigma)
+                gates_prob = get_gates_prob_my(gates_theta,gates_sigma,self._total_steps)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -252,7 +276,7 @@ class WideDeep(BaseModel):
                 loss = self.compute_loss(return_dict, y_true)
 
                 # --- update for droprank start---
-                loss += torch.sum(gates_prob) * LR
+                loss += torch.sum(gates_prob) * lamda
 
                 ####
                 # dot = make_dot(loss, params=dict(self.named_parameters()))
@@ -296,6 +320,108 @@ class WideDeep(BaseModel):
                                                   'feature_sigma': gates_sigma.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
+
+    def fit_for_autofield(self, data_generator, epochs=1, validation_data=None,
+                          max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+
+        self._freq = 5
+
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        cyc_val = cycle(validation_data)
+        # Make a list of theta for each feature
+        gates_a1 = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_a1.requires_grad_(requires_grad=True)
+
+        # --- update for droprank start---
+        # self.optimizer.add_param_group({'params': gates_a1, 'lr': self.learning_rate * 0.1})
+        # --- update for droprank end---
+
+        gates_optimizer = optim.Adam([gates_a1], lr=self.learning_rate * 0.1)
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                # --- update for droprank start---
+
+                gates_a1.data = torch.clamp(gates_a1.data, min=EPS, max=1)
+
+                gates_prob = get_gates_prob_autofield(gates_a1, epoch=self._total_steps)
+
+
+                return_dict = self.forward_with_autofield(batch_data, gates_prob)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                loss.backward()
+
+                train_loss += loss.item()
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                if self._total_steps % self._freq == 0:
+                    # A new computation graph is built
+                    gates_prob = get_gates_prob_autofield(gates_a1, epoch=self._total_steps)
+
+                    batch_val_data = next(cyc_val)
+                    gates_optimizer.zero_grad()
+                    return_dict = self.forward_with_autofield(batch_val_data, gates_prob)
+                    y_true = self.get_labels(batch_val_data)
+                    loss_val = self.compute_loss(return_dict, y_true)
+                    loss_val.backward()
+                    gates_optimizer.step()
+
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_step()
+                if self._stop_training:
+                    break
+
+                # --- update for droprank start---
+            logging.info("\n Gates Theta: {}".format(gates_a1))
+            # --- update for droprank end---
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+        print(gates_a1)
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': gates_a1.tolist()})
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
+        return
+
     def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
         logging.info("Start evaluate with PFI-WD")
 

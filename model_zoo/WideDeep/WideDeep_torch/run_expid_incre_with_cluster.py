@@ -48,6 +48,7 @@ import os
 from pathlib import Path
 import importlib
 from infomer import email
+from model_zoo.utils import cluster_features
 
 if __name__ == '__main__':
     ''' Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
@@ -65,7 +66,7 @@ if __name__ == '__main__':
     logging.info("Params: " + print_to_json(params))
     # seed_everything(seed=params['seed'])
 
-    # email.common_send('WD_droprank_incre.py',params["data_format"])
+    # email.common_send('DCN_incre.py',params["data_format"])
 
     if params.get('spe_processor'):
         module_name = f"fuxictr.datasets.{params['spe_processor']}"
@@ -95,58 +96,47 @@ if __name__ == '__main__':
     topk_logloss_result = []
     topk_auc_result = []
 
+
     # for i in range(df.shape[0]):
-    # #for i in range(df.shape[0]-1, 11, -1):
-    # #for i in range(11, 12):
-    #     topk_params = copy.deepcopy(params)
-    #     topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
-    #     logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'], len(topk_params['use_features'])))
-    #     topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
-    #     topk_feature_map.load(feature_map_json, topk_params)
-    #
-    #     model_class = getattr(model_zoo, topk_params['model'])
-    #     topk_model = model_class(topk_feature_map, **topk_params)
-    #     topk_model.count_parameters()  # print number of parameters used in model
-    #
-    #     train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
-    #     topk_model.fit(train_gen, validation_data=valid_gen, **params)
-    #     valid_result = topk_model.evaluate(valid_gen)
-    #
-    #     topk_column_name.append('topk_{}_with_{}'.format(i+1, topk_params['use_features']))
-    #     topk_logloss_result.append(valid_result['logloss'])
-    #     topk_auc_result.append(valid_result['AUC'])
-    #
-    #     # email.common_send('WD_droprank_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
-    #     del train_gen, valid_gen
-    #     gc.collect()
-    # cur_AUC = 0
-    # total_times = 0
-    # SOTA = 0.79295
-
-    # incre = 10
-    # for i in range(incre-1, df.shape[0]+incre-1, incre):
-
-    # for i in [19,19,19,79,79,79,59,59,59,89,89,89]:
-    # for i in [239,199,219,109,119,229,149,189]:
-    for i in [31,33]*3:
-    #for i in range(30, df.shape[0], 1):
+    # for i in range(df.shape[0]-1, 11, -1):
+    # TIMES = 10
+    # while TIMES > 0:
+    #     TIMES -= 1
+    # for i in range(9, 13):
+    # for i in [139,df.shape[0]-1]:
+    # for i in range(8, 12):
+    incre = 1
+    for i in range(30 + incre - 1, df.shape[0] + incre - 1, incre):
+    #for i in [9]*40:
+    # for i in [19,19,19,244,244,244]:
         i = min(i, df.shape[0] - 1)
-    # while cur_AUC < SOTA:
-    #     for i in range(8, 13):
         topk_params = copy.deepcopy(params)
+        cur_features_rows = df.iloc[:i + 1, :]
+
+        # feature_name and label(final label) of cluster_df will be used in FeatureMap
+        cluster_df = cluster_features(cur_features_rows)
+
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
         logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
                                                                           len(topk_params['use_features'])))
         topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
         topk_feature_map.load(feature_map_json, topk_params)
 
+        # TODO: adaptively generate size_list
+        size_list = [40, 20, 10]
+        # size_list = [32,32,32]
+        # modify feature_map embedding_dim by cluster_list
+        for idx, row in cluster_df.iterrows():
+            cur_feat_name = row['feature_name']
+            assert cur_feat_name in topk_feature_map.features.keys(), \
+                'feature_name {} not in topk_feature_map'.format(cur_feat_name)
+            topk_feature_map.features[cur_feat_name]['embedding_dim'] = size_list[row['label']]
+            # Output the size of each feature
+            logging.info('--- Feature {} with size {}'.format(cur_feat_name, size_list[row['label']]))
+
         model_class = getattr(model_zoo, topk_params['model'])
         topk_model = model_class(topk_feature_map, **topk_params)
         topk_model.count_parameters()  # print number of parameters used in model
-
-        # train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
-        # topk_model.fit(train_gen, validation_data=valid_gen, **params)
-        # valid_result = topk_model.evaluate(valid_gen)
 
         train_gen, valid_gen, test_gen = H5DataLoader(topk_feature_map, stage='both', **topk_params).make_iterator()
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
@@ -155,18 +145,10 @@ if __name__ == '__main__':
         topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
         topk_logloss_result.append(valid_result['logloss'])
         topk_auc_result.append(valid_result['AUC'])
-        cur_AUC = valid_result['AUC']
 
-        # email.common_send('DCN_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
+        # email.common_send('FM_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
         del train_gen, valid_gen, test_gen
         gc.collect()
-
-        # if cur_AUC >= SOTA:
-        #     break
-
-        # Log times with color
-        # total_times += 1
-        # logging.info('Time: {}'.format(total_times))
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
