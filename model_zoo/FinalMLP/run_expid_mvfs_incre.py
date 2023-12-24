@@ -45,6 +45,7 @@ import torch
 import numpy as np
 import logging
 from infomer import email
+import pandas as pd
 
 if __name__ == '__main__':
     ''' Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
@@ -81,42 +82,49 @@ if __name__ == '__main__':
     feature_map = FeatureMap(params['dataset_id'], data_dir)
     feature_map.load(feature_map_json, params)
 
-    model_class = getattr(model_zoo, params['model'])
-    print('params[model]', params['model'])
-    model = model_class(feature_map, **params)
-    model.count_parameters()  # print number of parameters used in model
+    select_nums = []
+    AUCs = []
+    logloss = []
+    for i in range(0, len(feature_map.features)):
+        model_class = getattr(model_zoo, params['model'])
+        print('params[model]', params['model'])
+        model = model_class(feature_map, select_num = i+1,**params)
+        select_nums.append(i+1)
+        model.count_parameters()  # print number of parameters used in model
 
 
-    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    # email.common_send('AdaFS_select.py - Build Data',"")
-    if args.get('cp',None) != None:
-        print('load model from checkpoint')
-        model.load_state_dict(torch.load(args['cp']))
-    else:
-        model.fit_for_mvfs(train_gen, validation_data=valid_gen, **params)
+        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+        # email.common_send('AdaFS_select.py - Build Data',"")
+        if args.get('cp',None) != None:
+            print('load model from checkpoint')
+            model.load_state_dict(torch.load(args['cp']))
+        else:
+            model.fit_for_mvfs(train_gen, validation_data=valid_gen, **params)
 
-    # email.common_send('AdaFS_{}_select.py - Training', "".format(args['expid']))
+        # email.common_send('AdaFS_{}_select.py - Training', "".format(args['expid']))
 
-    logging.info('****** Validation evaluation ******')
-    valid_result = model.evaluate(valid_gen)
-    del train_gen, valid_gen
-    gc.collect()
+        logging.info('****** Validation evaluation ******')
+        valid_result = model.evaluate(valid_gen)
+        del train_gen, valid_gen
+        gc.collect()
 
-    logging.info('****** AdaFS Validation evaluation ******')
-    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    model.evaluate_with_adafs(valid_gen)
-    del train_gen, valid_gen
-    gc.collect()
+        logging.info('****** MvFs Validation evaluation ******')
+        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+        model.evaluate(valid_gen)
+        del train_gen, valid_gen
+        gc.collect()
 
-    logging.info('******** Test evaluation ********')
-    test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
-    test_result = {}
-    if test_gen:
-        test_result = model.evaluate(test_gen)
+        logging.info('******** Test evaluation ********')
+        test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
+        test_result = {}
+        if test_gen:
+            test_result = model.evaluate(test_gen)
+            AUCs.append(test_result['auc'])
+            logloss.append(test_result['logloss'])
+        del test_gen
 
-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
-    with open(result_filename, 'a+') as fw:
-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
-                 .format(datetime.now().strftime('%Y%m%d-%H%M%S'),
-                         ' '.join(sys.argv), experiment_id, params['dataset_id'],
-                         "N.A.", print_to_list(valid_result), print_to_list(test_result)))
+    # Save the result
+    topk_ablation_df = pd.DataFrame({'feature_num': select_nums,
+                                     'topk_logloss': logloss,
+                                     'topk_auc': AUCs})
+    topk_ablation_df.to_csv('feature_ablation.csv')
