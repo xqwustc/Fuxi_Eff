@@ -96,7 +96,7 @@ if __name__ == '__main__':
     topk_logloss_result = []
     topk_auc_result = []
 
-    incre = 10
+    incre = 1
     # for i in range(df.shape[0]):
     # for i in range(df.shape[0]-1, 11, -1):
     # TIMES = 10
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     # for i in range(9, 13):
     # for i in [139,df.shape[0]-1]:
     # for i in range(8, 12):
-    for i in range(incre - 1, df.shape[0] + incre - 1, incre):
+    for i in range(29 + incre - 1, df.shape[0] + incre - 1, incre):
         topk_params = copy.deepcopy(params)
         cur_features_rows = df.iloc[:i + 1, :]
 

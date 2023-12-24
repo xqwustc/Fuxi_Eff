@@ -95,14 +95,26 @@ if __name__ == '__main__':
     topk_logloss_result = []
     topk_auc_result = []
 
-    # for i in range(df.shape[0]):
-    #for i in range(df.shape[0]-1, 11, -1):
-    #for i in range(11, 12):
-    # cur_AUC = 0
-    # total_times = 0
-    # SOTA = 0.79256
-    # while cur_AUC < SOTA:
-    for i in range(9, df.shape[0],10):
+    #for i in range(df.shape[0]):
+
+    for i in range(30, df.shape[0], 1):
+    # times = 2
+    # while times > 0:
+    #     times -= 1
+        # for i in [10,11,df.shape[0] - 1]:
+    # for i in range(df.shape[0]-1, 11, -1):
+        #for i in range(11, 12):
+        # cur_AUC = 0
+        # total_times = 0
+        # SOTA = 0.79256
+        # while cur_AUC < SOTA:
+        # for i in range(9, df.shape[0],10):
+
+    # incre = 10
+    # for i in range(incre-1, df.shape[0]+incre-1, incre):
+
+    #for i in [219,199,169,179,159]*6:
+        i = min(i, df.shape[0] - 1)
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
         logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'], len(topk_params['use_features'])))
@@ -113,10 +125,12 @@ if __name__ == '__main__':
         topk_model = model_class(topk_feature_map, **topk_params)
         topk_model.count_parameters()  # print number of parameters used in model
 
-        train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
-        topk_model.fit(train_gen, validation_data=valid_gen, **params)
+        # train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
+        # test_gen = H5DataLoader(topk_feature_map, stage='test', **params).make_iterator()
+        train_gen,valid_gen,test_gen = H5DataLoader(topk_feature_map, stage='both', **topk_params).make_iterator()
+        # valid_gen,test_gen = test_gen,valid_gen
 
-        test_gen = H5DataLoader(topk_feature_map, stage='test', **params).make_iterator()
+        topk_model.fit(train_gen, validation_data=valid_gen, **params)
         valid_result = topk_model.evaluate(test_gen)
 
         topk_column_name.append('topk_{}_with_{}'.format(i+1, topk_params['use_features']))
@@ -125,7 +139,7 @@ if __name__ == '__main__':
         cur_AUC = valid_result['AUC']
 
         # email.common_send('DCN_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
-        del train_gen, valid_gen
+        del train_gen, valid_gen, test_gen
         gc.collect()
 
         # if cur_AUC >= SOTA:
