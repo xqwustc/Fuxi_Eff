@@ -119,7 +119,7 @@ if __name__ == '__main__':
         test_result = {}
         if test_gen:
             test_result = model.evaluate(test_gen)
-            AUCs.append(test_result['auc'])
+            AUCs.append(test_result['AUC'])
             logloss.append(test_result['logloss'])
         del test_gen
 
