@@ -18,6 +18,12 @@ import torch
 from torch import nn
 from fuxictr.pytorch.models import BaseModel
 from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block
+import numpy as np
+import logging
+import sys
+import pandas as pd
+from tqdm import tqdm
+from model_zoo.utils import get_gates_prob_my
 
 
 class FinalMLP(BaseModel):
@@ -49,6 +55,7 @@ class FinalMLP(BaseModel):
                                        embedding_regularizer=embedding_regularizer, 
                                        net_regularizer=net_regularizer,
                                        **kwargs)
+        self.learning_rate = learning_rate
         self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
         feature_dim = embedding_dim * feature_map.num_fields
         self.mlp1 = MLP_Block(input_dim=feature_dim,
@@ -95,6 +102,121 @@ class FinalMLP(BaseModel):
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
+
+    def forward_with_dr(self,inputs,gates_prob):
+        X = self.get_inputs(inputs)
+
+        feature_emb = self.embedding_layer(X)
+        for i in range(len(self.feature_map.features)):
+            feature_emb[:,i:i+1,:] *= gates_prob[i]
+
+        flat_emb = feature_emb.flatten(start_dim=1)
+
+        if self.use_fs:
+            feat1, feat2 = self.fs_module(X, flat_emb)
+        else:
+            feat1, feat2 = flat_emb, flat_emb
+        y_pred = self.fusion_module(self.mlp1(feat1), self.mlp2(feat2))
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def fit_for_dr(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        # Make a list of theta for each feature
+        gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_theta.requires_grad_(requires_grad=True)
+
+        gates_sigma = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_sigma.requires_grad_(requires_grad=True)
+
+        # --- update for droprank start---
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': self.learning_rate*0.1})
+        self.optimizer.add_param_group({'params': gates_sigma, 'lr': self.learning_rate*0.1})
+        # --- update for droprank end---
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                # --- update for droprank start---
+                gates_prob = get_gates_prob_my(gates_theta, gates_sigma)
+                return_dict = self.forward_with_dr(batch_data, gates_prob)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                # --- update for droprank start---
+                loss += (torch.sum(gates_prob)) * 1e-5
+
+                ####
+                # dot = make_dot(loss, params=dict(self.named_parameters()))
+                # dot.view()
+                ####
+
+                # --- update for droprank end---
+
+                loss.backward()
+
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_step()
+                if self._stop_training:
+                    break
+
+                # --- update for droprank start---
+            logging.info("\nMy Gates Theta: {}".format(gates_theta))
+            # --- update for droprank end---
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+        print(gates_theta)
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': gates_theta.tolist(),
+                                                  'feature_sigma': gates_sigma.tolist()})
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
+
 
 
 class FeatureSelection(nn.Module):

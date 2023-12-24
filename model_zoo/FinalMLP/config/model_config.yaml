@@ -125,3 +125,55 @@ FinalMLP_default: # This is a config template
     seed: 20222023
     monitor: {'AUC': 1, 'logloss': -1}
     monitor_mode: 'max'
+
+DualMLP_avazu: # This is a config template
+    model: DualMLP
+    dataset_id: avazu_x4
+    loss: binary_crossentropy
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    mlp1_hidden_units: [64, 32]
+    mlp1_hidden_activations: relu
+    mlp1_dropout: 0
+    mlp1_batch_norm: False
+    mlp2_hidden_units: [64, 64, 64]
+    mlp2_hidden_activations: relu
+    mlp2_dropout: 0
+    mlp2_batch_norm: False
+    batch_size: 10000
+    embedding_dim: 16
+    epochs: 100
+    shuffle: True
+    seed: 20222023
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+
+DualMLP_criteo: # This is a config template
+    model: DualMLP
+    dataset_id: criteo_x4
+    loss: binary_crossentropy
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    mlp1_hidden_units: [64, 32]
+    mlp1_hidden_activations: relu
+    mlp1_dropout: 0
+    mlp1_batch_norm: False
+    mlp2_hidden_units: [64, 64, 64]
+    mlp2_hidden_activations: relu
+    mlp2_dropout: 0
+    mlp2_batch_norm: False
+    batch_size: 10000
+    embedding_dim: 16
+    epochs: 100
+    shuffle: True
+    seed: 20222023
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
