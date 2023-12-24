@@ -25,9 +25,9 @@ import logging
 from tqdm import tqdm
 import sys
 import pandas as pd
-from utils import *
+# from utils import *
 from torch import log
-from feat_select.Selectors import AdaFS
+from feat_select.AdaFS_module import AdaFS
 EPS = 1e-6
 
 class FM(BaseModel):
