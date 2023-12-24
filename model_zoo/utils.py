@@ -59,3 +59,56 @@ def calculate_overlap(mu1, sigma1, mu2, sigma2):
     return NormalDist(mu=mu1, sigma=sigma1).overlap(NormalDist(mu=mu2, sigma=sigma2))
 
 
+def get_gates_prob_autofield(gates_theta,epoch = None):
+    gates_prob = gates_theta.clone()
+    for i in range(gates_theta.shape[0]):
+        gates_prob[i] = get_prob_autofield(gates_theta[i],epoch)
+    return gates_prob
+
+def get_prob_autofield(unit, epoch = None):
+    t = max(0.01, 1 - 5e-5 * epoch)
+    u1 = torch.rand(1)
+    u0 = torch.rand(1)
+
+    g1 = -torch.log(-torch.log(u1))
+    g0 = -torch.log(-torch.log(u0))
+
+    exp_term_denominator_1 = torch.exp((torch.log(unit) + g1) / t)
+    exp_term_denominator_0 = torch.exp((torch.log(1 - unit) + g0) / t)
+
+    # Calculate the probability p_n^j
+    p_n_j = exp_term_denominator_1 / (exp_term_denominator_1 + exp_term_denominator_0)
+
+    return p_n_j
+
+def get_gates_prob_my(gates_theta,gates_sigma,epoch = None):
+    assert len(gates_theta) == len(gates_sigma), "gates_theta and gates_sigma should have the same length"
+    gates_prob = gates_theta.clone()
+    for i in range(gates_theta.shape[0]):
+        gates_prob[i] = get_prob_my(gates_theta[i],gates_sigma[i],epoch)
+    return gates_prob
+
+def get_prob_my(unit,sigma_unit,epoch = None):
+    if epoch is None:
+        t = 0.5
+    else:
+        # t = max(0.1, 1 - 5e-5 * (epoch**1.5))
+        t = 0.5
+
+    eps = torch.randn(1)*sigma_unit
+    # u = torch.randn(1)*sigma_unit
+    # u.requires_grad = False
+    # u = u.to(device=self.device)
+
+    return torch.sigmoid((1.0 / t) * (unit + eps))
+
+def get_sum_feature_dimisions(embedding_layer):
+    total_dimensions = 0
+    for layer in embedding_layer.embedding_layer.embedding_layers.values():
+        if isinstance(layer,nn.Embedding):
+            total_dimensions += layer.embedding_dim
+        elif isinstance(layer,nn.Linear):
+            total_dimensions += layer.out_features
+        else:
+            raise TypeError(f"Unsupported layer type {type(layer)} for layer {name}")
+    return total_dimensions
