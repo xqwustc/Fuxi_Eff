@@ -101,7 +101,8 @@ if __name__ == '__main__':
     # while cur_AUC < SOTA:
     incre = 5
     # for i in range(8, 12):
-    for i in range(incre-1, df.shape[0]+incre-1, incre):
+    # for i in range(incre-1, df.shape[0]+incre-1, incre):
+    for i in range(df.shape[0]):
         i = min(i, df.shape[0]-1)
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
@@ -116,7 +117,9 @@ if __name__ == '__main__':
 
         train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
-        valid_result = topk_model.evaluate(valid_gen)
+
+        test_gen = H5DataLoader(topk_feature_map, stage='test', **params).make_iterator()
+        valid_result = topk_model.evaluate(test_gen)
 
         topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
         topk_logloss_result.append(valid_result['logloss'])

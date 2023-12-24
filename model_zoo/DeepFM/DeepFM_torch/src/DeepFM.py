@@ -24,7 +24,8 @@ from torch import log
 import pandas as pd
 from tqdm import tqdm
 import sys
-from feat_select.Selectors import AdaFS
+from feat_select.AdaFS_module import AdaFS
+from model_zoo.utils import get_gates_prob_my
 EPS = 1e-6
 
 
@@ -136,15 +137,15 @@ class DeepFM(BaseModel):
 
         torch.autograd.set_detect_anomaly(True)
         # Make a list of theta for each feature
-        gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
+        gates_theta = torch.ones(len(self.feature_map.features)) * 0
         gates_theta.requires_grad_(requires_grad=True)
 
         gates_sigma = torch.ones(len(self.feature_map.features)) * 0.5
         gates_sigma.requires_grad_(requires_grad=True)
 
         # --- update for droprank start---
-        self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-2})
-        self.optimizer.add_param_group({'params': gates_sigma, 'lr': 1e-2})
+        self.optimizer.add_param_group({'params': gates_theta, 'lr': 1e-4})
+        self.optimizer.add_param_group({'params': gates_sigma, 'lr': 1e-4})
         # --- update for droprank end---
 
 
@@ -164,7 +165,7 @@ class DeepFM(BaseModel):
                 self._total_steps += 1
 
                 # --- update for droprank start---
-                gates_prob = self._get_gates_prob(gates_theta,gates_sigma)
+                gates_prob = get_gates_prob_my(gates_theta,gates_sigma)
                 return_dict = self.forward_with_dr(batch_data, gates_prob)
                 # --- update for droprank end---
 
@@ -174,7 +175,7 @@ class DeepFM(BaseModel):
                 loss = self.compute_loss(return_dict, y_true)
 
                 # --- update for droprank start---
-                loss += torch.sum(gates_prob) * 1e-4
+                loss += torch.sum(gates_prob) * 1e-3
 
                 ####
                 # dot = make_dot(loss, params=dict(self.named_parameters()))
@@ -366,21 +367,21 @@ class DeepFM(BaseModel):
 
             yield permuted_batch
 
-    def _get_gates_prob(self, gates_theta, gates_sigma):
-        assert len(gates_theta) == len(gates_sigma), "gates_theta and gates_sigma should have the same length"
-        gates_prob = gates_theta.clone()
-        for i in range(gates_theta.shape[0]):
-            gates_prob[i] = self._get_prob(gates_theta[i], gates_sigma[i])
-        return gates_prob
-
-    def _get_prob(self, unit, sigma_unit):
-        eps = torch.randn(1) * sigma_unit
-
-        # u = torch.randn(1)*sigma_unit
-        # u.requires_grad = False
-        # u = u.to(device=self.device)
-
-        return torch.sigmoid((1.0 / 0.1) * (unit + eps))
+    # def _get_gates_prob(self, gates_theta, gates_sigma):
+    #     assert len(gates_theta) == len(gates_sigma), "gates_theta and gates_sigma should have the same length"
+    #     gates_prob = gates_theta.clone()
+    #     for i in range(gates_theta.shape[0]):
+    #         gates_prob[i] = self._get_prob(gates_theta[i], gates_sigma[i])
+    #     return gates_prob
+    #
+    # def _get_prob(self, unit, sigma_unit):
+    #     eps = torch.randn(1) * sigma_unit
+    #
+    #     # u = torch.randn(1)*sigma_unit
+    #     # u.requires_grad = False
+    #     # u = u.to(device=self.device)
+    #
+    #     return torch.sigmoid((1.0 / 0.5) * (unit + eps))
 
     def _get_featuremap_size(self,feature_map):
         # 先写死每个维度的emb_size = 32，后续可以改成从feature_map中读取
