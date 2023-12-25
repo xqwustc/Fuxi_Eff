@@ -37,7 +37,7 @@ class DualMLP(BaseModel):
                  model_id="DualMLP", 
                  gpu=-1,
                  learning_rate=1e-3,
-                 embedding_dim=10,
+                 embedding_dim=0,
                  mlp1_hidden_units=[64, 64, 64],
                  mlp1_hidden_activations="ReLU",
                  mlp1_dropout=0,
@@ -72,9 +72,9 @@ class DualMLP(BaseModel):
                               output_activation=None,
                               dropout_rates=mlp2_dropout, 
                               batch_norm=mlp2_batch_norm)
-        assert select_num > 0, "select_num must be greater than 0"
-        self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
-                                             embed_dims=len(self.feature_map.features),num_selections=select_num)
+        if select_num > 0:
+            self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
+                                                 embed_dims=len(self.feature_map.features),num_selections=select_num)
         self.weight = 0
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
