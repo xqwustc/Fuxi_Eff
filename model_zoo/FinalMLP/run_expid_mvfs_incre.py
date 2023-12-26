@@ -82,17 +82,28 @@ if __name__ == '__main__':
     feature_map = FeatureMap(params['dataset_id'], data_dir)
     feature_map.load(feature_map_json, params)
 
+    # warmup network without controller
+    logging.info('****** Warmup network without controller ******')
+    model_class = getattr(model_zoo, params['model'])
+    model = model_class(feature_map, **params)
+    model.count_parameters()
+    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+    model.fit(train_gen, validation_data=valid_gen, **params)
+    torch.save(model.state_dict(), f"{params['model']}_warmup4mv.pth")
+    logging.info('****** Warmup end and save model in {} ******'.format(f"{params['model']}_warmup4mv.pth"))
+    del train_gen,valid_gen
+
     select_nums = []
     AUCs = []
     logloss = []
-    for i in range(30, len(feature_map.features)):
+    for i in range(0, len(feature_map.features)):
         model_class = getattr(model_zoo, params['model'])
         print('params[model]', params['model'])
+        model.load_state_dict(torch.load(f"{params['model']}_warmup4mv.pth"), strict=False)
         model = model_class(feature_map, select_num = i+1,**params)
         select_nums.append(i+1)
         model.count_parameters()  # print number of parameters used in model
-
-        print('Used Feature Number:', i + 1)
+        logging.info('Used Feature Number:{} '.format(i+1))
         train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
         # email.common_send('AdaFS_select.py - Build Data',"")
         if args.get('cp',None) != None:
