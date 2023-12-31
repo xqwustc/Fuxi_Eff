@@ -38,7 +38,6 @@ class MvFS_Controller(nn.Module):
         )
 
     def forward(self, emb_fields):
-
         input_mlp = emb_fields.flatten(start_dim=1).float()
         importance_list = []
         for i in range(self.num_selections):

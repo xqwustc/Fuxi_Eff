@@ -10,10 +10,10 @@ class AdaFS(nn.Module):
         super().__init__()
         self.num = field_num
         self.embed_dim = embed_dim
-        self.mlp_dims = [embed_dim,8]
+        # self.mlp_dims = [embed_dim,8]
         self.dropout = 0.2
-        self.mlp = MultiLayerPerceptron(input_dim=field_num * self.embed_dim,
-                                        embed_dims=self.mlp_dims, output_layer=True, dropout=self.dropout)
+        # self.mlp = MultiLayerPerceptron(input_dim=field_num * self.embed_dim,
+        #                                 embed_dims=self.mlp_dims, output_layer=True, dropout=self.dropout)
         self.controller = controller_mlp(self.dropout, input_dim=self.num * self.embed_dim,
                                          embed_dims=[self.num])
         self.weight = 0
@@ -30,7 +30,7 @@ class AdaFS(nn.Module):
         if self.UseController:
             self.weight = self.controller(field)
             field = field * torch.unsqueeze(self.weight,1)
-        input_mlp = field.flatten(start_dim=1).float()
+        input_mlp = field.flatten(start_dim=1)
         return input_mlp
 
     def forward_for_eval(self, field):
@@ -59,6 +59,45 @@ class AdaFS(nn.Module):
 #         input_mlp = field.flatten(start_dim=1).float()
 #         res = self.mlp(input_mlp)
 #         return torch.sigmoid(res.squeeze(1))
+
+class AdaFS_hard(nn.Module):
+    def __init__(self,field_num, embed_dim,select_num = 0):
+        super().__init__()
+        assert 0 < select_num <= field_num, "select_num must be in (0,field_num]"
+        self.num = field_num
+        self.embed_dim = embed_dim
+        self.dropout = 0.2
+        self.controller = controller_mlp(self.dropout, input_dim=self.num * self.embed_dim,
+                                         embed_dims=[self.num])
+        self.BN = nn.BatchNorm1d(self.embed_dim)
+
+        self.k = select_num
+
+        self.UseController = True
+        self.useWeight = True
+        self.reWeight = True
+        self.useBN = True
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
+    def forward(self, field):
+        # 对每个feature进行batchnorm
+        # if self.useBN == True:
+        #     field = self.BN(field)
+        if self.UseController:
+            weight = self.controller(field)
+            kmax_index, kmax_weight = kmax_pooling(weight,1,self.k)
+            if self.reWeight == True:
+                kmax_weight = kmax_weight/torch.sum(kmax_weight,dim=1).unsqueeze(1) #reweight, 使结果和为1
+            #创建跟weight同维度的mask，index位赋予值，其余为0
+            mask = torch.zeros(weight.shape[0],weight.shape[1]).to(self.device)
+            if self.useWeight:
+                mask = mask.scatter_(1,kmax_index,kmax_weight) #填充对应索引位置为weight值
+            else:
+                mask = mask.scatter_(1,kmax_index,torch.ones(kmax_weight.shape[0],kmax_weight.shape[1])) #对应索引位置填充1
+
+            field = field * torch.unsqueeze(mask,1)
+        input_mlp = field.flatten(start_dim=1)
+        return input_mlp
 
 class EMB(nn.Module):
     def __init__(self, field_dims, embed_dim):
@@ -120,3 +159,7 @@ class controller_mlp(nn.Module):
         if isinstance(m, nn.Linear):
             nn.init.xavier_normal_(m.weight)
             nn.init.constant_(m.bias, 0)
+
+def kmax_pooling(x, dim, k):
+    index = x.topk(k, dim=dim)[1].sort(dim=dim)[0]
+    return index, x.gather(dim, index)
