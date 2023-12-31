@@ -26,11 +26,12 @@ import pandas as pd
 # from utils import *
 from torch import log
 import pandas as pd
-from feat_select.AdaFS_module import AdaFS
+from feat_select.AdaFS_module import AdaFS,AdaFS_hard
 import torch.nn.functional as F
-from model_zoo.utils import get_gates_prob_autofield,get_gates_prob_my
+from model_zoo.utils import get_gates_prob_autofield,get_gates_prob_my,get_sum_feature_dimisions
 from itertools import cycle
 import torch.optim as optim
+import feat_select.MvFS_module as Mv
 
 EPS = 1e-6
 class DCN(BaseModel):
@@ -39,6 +40,7 @@ class DCN(BaseModel):
                  model_id="DCN",
                  gpu=-1,
                  learning_rate=1e-3,
+                 select_num=0,
                  embedding_dim=10,
                  dnn_hidden_units=[],
                  dnn_activations="ReLU",
@@ -74,17 +76,33 @@ class DCN(BaseModel):
             final_dim += dnn_hidden_units[-1]
         self.fc = nn.Linear(final_dim, 1) # [cross_part, dnn_part] -> logit
         self.learning_rate = learning_rate
-
+        if select_num > 0:
+            self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
+                                                 embed_dims=len(self.feature_map.features), num_selections=select_num)
+            if kwargs['dataset_id'] == 'ifly_chu':
+                pre_path = '/home/Stev/proj/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/ifly_chu/'
+                pre_path += f'mvfs_select{select_num}.pth'
+                self.controller.load_state_dict(torch.load(pre_path))
+                for param in self.controller.parameters():
+                    param.requires_grad = False
+                print('load pretrained mvfs controller from', pre_path)
         # # --- update for droprank start---
         # self.gates_theta = nn.Parameter(torch.ones(len(self.feature_map.features)) * 0.5)
         # self.gates_theta.requires_grad_(requires_grad=True)
         # # --- update for droprank end---
 
-        # # --- update for AdaFS start---
-        self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
-        # # --- update for AdaFS end---
-
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
+
+        # Put it after compile!!!! update it use self optimizer
+        # --- update for AdaFS start---
+        if kwargs.get('mode', None):
+            if kwargs.get('mode') == 1:  # soft
+                self.adafs = AdaFS(feature_map.num_fields, embedding_dim)
+            else: # hard
+                self.adafs = AdaFS_hard(feature_map.num_fields,embedding_dim,
+                                        select_num=kwargs.get('select_num'))
+        # --- update for AdaFS end---
+
         self.reset_parameters()
         self.model_to_device()
 
@@ -176,6 +194,25 @@ class DCN(BaseModel):
         # The embedding process for X will be in AdaFS
         batch_weight = self.adafs.forward_for_eval(feature_emb.transpose(1,2))
         return batch_weight
+
+    def forward_with_mvfs(self, inputs):
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        # The embedding process for X will be in MvFS
+        self.weight = self.controller(feature_emb)
+        selected_field = feature_emb * torch.unsqueeze(self.weight, 2)
+        feature_emb = selected_field.flatten(start_dim=1)
+
+        cross_out = self.crossnet(feature_emb)
+        if self.dnn is not None:
+            dnn_out = self.dnn(feature_emb)
+            final_out = torch.cat([cross_out, dnn_out], dim=-1)
+        else:
+            final_out = cross_out
+        y_pred = self.fc(final_out)
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
 
     # def forward_with_dr(self, inputs, gates_prob, seed=2019):
     #     return self.forward(inputs,seed)
@@ -513,8 +550,13 @@ class DCN(BaseModel):
         self._total_steps = 0
         self._batch_index = 0
         self._epoch_index = 0
+        self._freq = 5
+
         if self._eval_steps is None:
             self._eval_steps = self._steps_per_epoch
+
+        cyc_val = cycle(validation_data)
+        controller_optimizer = optim.Adam(self.adafs.parameters(), lr=self.learning_rate)
 
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
         logging.info("************ Epoch=1 start ************")
@@ -533,24 +575,31 @@ class DCN(BaseModel):
                 self._batch_index = batch_index
                 self._total_steps += 1
 
-                # --- update for adafs start---
                 return_dict = self.forward_with_adafs(batch_data)
-                # --- update for adafs end---
+                # --- update for droprank end---
 
                 self.optimizer.zero_grad()
+                controller_optimizer.zero_grad()
 
                 y_true = self.get_labels(batch_data)
                 loss = self.compute_loss(return_dict, y_true)
 
                 loss.backward()
 
-                #print(self.adafs.controller.mlp.mlps[0][0].weight.grad)
+                train_loss += loss.item()
 
                 nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
                 self.optimizer.step()
 
+                if self._total_steps % self._freq == 0:
+                    batch_val_data = next(cyc_val)
+                    controller_optimizer.zero_grad()
+                    return_dict = self.forward_with_adafs(batch_val_data)
+                    y_true = self.get_labels(batch_val_data)
+                    loss_val = self.compute_loss(return_dict, y_true)
+                    loss_val.backward()
+                    controller_optimizer.step()
 
-                train_loss += loss.item()
                 if self._total_steps % self._eval_steps == 0:
                     logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
                     train_loss = 0
@@ -567,6 +616,68 @@ class DCN(BaseModel):
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
         return
+
+    def fit_for_mvfs(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                return_dict = self.forward_with_mvfs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                # --- update for droprank end---
+                loss.backward()
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_step()
+                if self._stop_training:
+                    break
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+
 
     # def _get_gates_prob_autofield(self, gates_theta,epoch = None):
     #     gates_prob = gates_theta.clone()
