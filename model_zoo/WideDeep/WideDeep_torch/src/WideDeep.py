@@ -14,7 +14,7 @@
 # limitations under the License.
 # =========================================================================
 
-
+import os
 import torch
 from torch import nn
 from fuxictr.pytorch.models import BaseModel
@@ -31,6 +31,8 @@ import sys
 from model_zoo.utils import get_gates_prob_my,get_sum_feature_dimisions,get_gates_prob_autofield
 from itertools import cycle
 import torch.optim as optim
+import feat_select.MvFS_module as Mv
+
 
 EPS = 1e-6
 lamda = 1e-5 # 1e-3
@@ -40,7 +42,8 @@ class WideDeep(BaseModel):
                  feature_map, 
                  model_id="WideDeep", 
                  gpu=-1, 
-                 learning_rate=1e-3, 
+                 learning_rate=1e-3,
+                 select_num=0,
                  embedding_dim=10, 
                  hidden_units=[64, 64, 64], 
                  hidden_activations="ReLU", 
@@ -81,6 +84,9 @@ class WideDeep(BaseModel):
         # # --- update for AdaFS start---
         self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
         # # --- update for AdaFS end---
+        if select_num > 0:
+            self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
+                                                 embed_dims=len(self.feature_map.features), num_selections=select_num)
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
@@ -156,6 +162,21 @@ class WideDeep(BaseModel):
         # The embedding process for X will be in AdaFS
         batch_weight = self.adafs.forward_for_eval(feature_emb.transpose(1,2))
         return batch_weight
+
+    def forward_with_mvfs(self,inputs):
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        # The embedding process for X will be in MvFS
+        self.weight = self.controller(feature_emb)
+        selected_field = feature_emb * torch.unsqueeze(self.weight, 2)
+
+        feature_emb = selected_field.flatten(start_dim=1)
+        y_pred = self.lr_layer(X)
+        # y_pred += self.dnn(feature_emb.flatten(start_dim=1))
+        y_pred += self.dnn(feature_emb)
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
 
     def fit_for_adafs(self, data_generator, epochs=1, validation_data=None,
             max_gradient_norm=10., **kwargs):
@@ -421,7 +442,66 @@ class WideDeep(BaseModel):
                                                   'feature_weight': gates_a1.tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
+    def fit_for_mvfs(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
 
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                return_dict = self.forward_with_mvfs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                # --- update for droprank end---
+                loss.backward()
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_step()
+                if self._stop_training:
+                    break
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
     def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
         logging.info("Start evaluate with PFI-WD")
 
@@ -478,6 +558,15 @@ class WideDeep(BaseModel):
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
 
         return
+
+    def save_mv_controller(self,K,dataset_id):
+        directory = f"./{dataset_id}"
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # 保存模型
+        torch.save(self.controller.state_dict(), f"{directory}/mvfs_select{K}.pth")
 
     def _permute_feature(self,data_generator, feature_idx):
         """
