@@ -218,6 +218,32 @@ class FeatureEmbeddingDict(nn.Module):
                 feature_emb_dict[feature] = embeddings
         return feature_emb_dict
 
+class MaskedFeatureEmbedding(FeatureEmbedding):
+    def __init__(self, feature_map, embedding_dim, embedding_initializer="partial(nn.init.normal_, std=1e-4)", required_feature_columns=None, not_required_feature_columns=None, use_pretrain=True, use_sharing=True, mask_initial_value=0,temp=1):
+        super(MaskedFeatureEmbedding, self).__init__(feature_map, embedding_dim, embedding_initializer, required_feature_columns, not_required_feature_columns, use_pretrain, use_sharing)
+        # Add mask and initial weight
+        self.temp = temp
+        self.mask_initial_value = torch.tensor(mask_initial_value)
+        self.mask_weight = nn.Parameter(torch.Tensor(len(feature_map.features), 1))
+        nn.init.constant_(self.mask_weight, self.mask_initial_value)
 
+    def compute_mask(self, temp, ticket):
+        scaling = 1. / torch.sigmoid(self.mask_initial_value)
+        if ticket:
+            mask = (self.mask_weight > 0).float()
+        else:
+            mask = torch.sigmoid(temp * self.mask_weight)
+        return scaling * mask
+
+    def forward(self, X, feature_source=[], feature_type=[], flatten_emb=False, ticket=False):
+        feature_emb = super().forward(X, feature_source, feature_type, flatten_emb)
+        mask = self.compute_mask(self.temp, ticket)
+        return feature_emb * mask
+
+    def prune(self, temp):
+        self.mask_weight.data = torch.clamp(temp * self.mask_weight.data, max=self.mask_initial_value)
+
+    def reg(self,temp = 1):
+        return torch.sum(torch.sigmoid(temp * self.mask_weight))
 
 
