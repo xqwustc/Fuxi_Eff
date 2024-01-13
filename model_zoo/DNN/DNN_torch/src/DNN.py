@@ -31,6 +31,11 @@ from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
 from fuxictr.pytorch.layers import MaskedFeatureEmbedding
+from feat_select.AdaFS_module import AdaFS,AdaFS_hard
+from itertools import cycle
+import torch.optim as optim
+import feat_select.MvFS_module as Mv
+from fuxictr.pytorch.layers import MaskedFeatureEmbedding
 lamda_opt = 2e-9
 EPS = 1e-6
 
@@ -87,6 +92,15 @@ class DNN(BaseModel):
             #         param.requires_grad = False
             #     print('load pretrained mvfs controller from', pre_path)
 
+        # --- update for AdaFS start---
+        if kwargs.get('mode', None):
+            if kwargs.get('mode') == 1:  # soft
+                self.adafs = AdaFS(feature_map.num_fields, embedding_dim)
+            else: # hard
+                self.adafs = AdaFS_hard(feature_map.num_fields,embedding_dim,
+                                        select_num=kwargs.get('select_num'))
+        # --- update for AdaFS end---
+
         self.weight = 0
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
@@ -141,6 +155,50 @@ class DNN(BaseModel):
         return_dict = {"y_pred": y_pred}
         return return_dict
 
+    # Modify when changing models
+    def forward_with_adafs(self,inputs):
+
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        feature_emb = self.adafs(feature_emb.transpose(1, 2))
+        y_pred = self.mlp(feature_emb)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    # Do not modify when changing models
+    def forward_with_adafs_eval(self,inputs,seed=2019):
+        self.eval()
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        # The embedding process for X will be in AdaFS
+        batch_weight = self.adafs.forward_for_eval(feature_emb.transpose(1,2))
+        return batch_weight
+
+    # Do not modify when changing models
+
+    def evaluate_with_adafs(self, data_generator,seed = 2019):
+        self.eval()
+        data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+
+        weight = torch.zeros(1,len(self.feature_map.features))
+
+        for batch_data in data_generator:
+            # Get the batch weight from validation dataset, and will get a (n*feature_num) matrix
+            batch_weight = self.forward_with_adafs_eval(batch_data, seed)
+            batch_weight_use = batch_weight.cpu().detach()
+            batch_weight_use = batch_weight_use.sum(dim=0,keepdim=True)
+            # print('batch_weight_use', batch_weight_use)
+            weight += batch_weight_use
+
+        # 2-Norm the weight
+        weight /= torch.norm(weight)
+
+        # 处理成可读的特征重要性指标
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': np.squeeze(weight.numpy()).tolist()})
+
+        feature_importance_result = feature_importance_result.sort_values(by='feature_weight', ascending=False)
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
     def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
         pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
 
@@ -516,6 +574,82 @@ class DNN(BaseModel):
                                                   'feature_weight': self.embedding_layer.mask_weight.squeeze().tolist()})
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
+    def fit_for_adafs(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        self._freq = 5
+
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        cyc_val = cycle(validation_data)
+        controller_optimizer = optim.Adam(self.adafs.parameters(), lr=self.learning_rate)
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                return_dict = self.forward_with_adafs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+                controller_optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                loss.backward()
+
+                train_loss += loss.item()
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                if self._total_steps % self._freq == 0:
+                    batch_val_data = next(cyc_val)
+                    controller_optimizer.zero_grad()
+                    return_dict = self.forward_with_adafs(batch_val_data)
+                    y_true = self.get_labels(batch_val_data)
+                    loss_val = self.compute_loss(return_dict, y_true)
+                    loss_val.backward()
+                    controller_optimizer.step()
+
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_step()
+                if self._stop_training:
+                    break
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
     def eval_mvfs(self):
         logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
         self.eval()  # set to evaluation mode
