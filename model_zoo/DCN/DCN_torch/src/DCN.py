@@ -32,8 +32,10 @@ from model_zoo.utils import get_gates_prob_autofield,get_gates_prob_my,get_sum_f
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
+from fuxictr.pytorch.layers import MaskedFeatureEmbedding
 
 EPS = 1e-6
+lamda_opt = 2e-9
 class DCN(BaseModel):
     def __init__(self, 
                  feature_map,
@@ -56,7 +58,16 @@ class DCN(BaseModel):
                                   embedding_regularizer=embedding_regularizer, 
                                   net_regularizer=net_regularizer,
                                   **kwargs)
-        self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+        # self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+        if kwargs.get('optfs',0) == 1:
+            if kwargs['dataset_id'] == 'avazu_x4':
+                temp = 5000
+            else:
+                temp = 1000
+            print('Using OptFS Embedding Layer with temp = ',temp)
+            self.embedding_layer = MaskedFeatureEmbedding(feature_map, embedding_dim,temp = temp)
+        else:
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
 
         self.interpolate_n = 5
         self.mcdropout_n = int(net_dropout * 100)
@@ -79,13 +90,13 @@ class DCN(BaseModel):
         if select_num > 0:
             self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
                                                  embed_dims=len(self.feature_map.features), num_selections=select_num)
-            if kwargs['dataset_id'] == 'ifly_chu':
-                pre_path = '/home/Stev/proj/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/ifly_chu/'
-                pre_path += f'mvfs_select{select_num}.pth'
-                self.controller.load_state_dict(torch.load(pre_path))
-                for param in self.controller.parameters():
-                    param.requires_grad = False
-                print('load pretrained mvfs controller from', pre_path)
+            # if kwargs['dataset_id'] == 'ifly_chu':
+            #     pre_path = '/home/Stev/proj/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/ifly_chu/'
+            #     pre_path += f'mvfs_select{select_num}.pth'
+            #     self.controller.load_state_dict(torch.load(pre_path))
+            #     for param in self.controller.parameters():
+            #         param.requires_grad = False
+            #     print('load pretrained mvfs controller from', pre_path)
         # # --- update for droprank start---
         # self.gates_theta = nn.Parameter(torch.ones(len(self.feature_map.features)) * 0.5)
         # self.gates_theta.requires_grad_(requires_grad=True)
@@ -119,7 +130,24 @@ class DCN(BaseModel):
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
+    def forward_with_optfs(self, inputs):
+        """
+        Inputs: [X,y]
+        """
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        feature_emb = feature_emb.flatten(start_dim = 1)
 
+        cross_out = self.crossnet(feature_emb)
+        if self.dnn is not None:
+            dnn_out = self.dnn(feature_emb)
+            final_out = torch.cat([cross_out, dnn_out], dim=-1)
+        else:
+            final_out = cross_out
+        y_pred = self.fc(final_out)
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
     def forward_with_fmcr(self, inputs, seed=2019):
         X = self.get_inputs(inputs)
         torch.manual_seed(seed)
@@ -216,7 +244,61 @@ class DCN(BaseModel):
 
     # def forward_with_dr(self, inputs, gates_prob, seed=2019):
     #     return self.forward(inputs,seed)
+    def eval_mvfs(self):
+        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        self.eval()  # set to evaluation mode
+        data_generator = self.valid_gen
+        metrics = self._monitor.get_metrics()
+        with torch.no_grad():
+            y_pred = []
+            y_true = []
+            group_id = []
+            if self._verbose > 0:
+                data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_data in data_generator:
+                return_dict = self.forward_with_mvfs(batch_data)
+                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
+                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                if self.feature_map.group_id is not None:
+                    group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
+            y_pred = np.array(y_pred, np.float64)
+            y_true = np.array(y_true, np.float64)
+            group_id = np.array(group_id) if len(group_id) > 0 else None
+            if metrics is not None:
+                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+            else:
+                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+        super().checkpoint_and_earlystop(val_logs)
+        self.train()
 
+    def eval_optfs(self):
+        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        self.eval()  # set to evaluation mode
+        data_generator = self.valid_gen
+        metrics = self._monitor.get_metrics()
+        with torch.no_grad():
+            y_pred = []
+            y_true = []
+            group_id = []
+            if self._verbose > 0:
+                data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_data in data_generator:
+                return_dict = self.forward_with_optfs(batch_data)
+                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
+                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                if self.feature_map.group_id is not None:
+                    group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
+            y_pred = np.array(y_pred, np.float64)
+            y_true = np.array(y_true, np.float64)
+            group_id = np.array(group_id) if len(group_id) > 0 else None
+            if metrics is not None:
+                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+            else:
+                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+        super().checkpoint_and_earlystop(val_logs)
+        self.train()
     def evaluate_with_fmcr(self, data_generator, metrics=None, seed=2019):
         y_pred = []
         y_true = []
@@ -616,7 +698,85 @@ class DCN(BaseModel):
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
         return
+    def fit_for_optfs(self, data_generator, epochs=1, validation_data=None,
+                   max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
 
+        torch.autograd.set_detect_anomaly(True)
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                # --- update for droprank start---
+                return_dict = self.forward_with_optfs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                # --- update for droprank start---
+                loss += lamda_opt*self.embedding_layer.reg()
+
+                ####
+                # dot = make_dot(loss, params=dict(self.named_parameters()))
+                # dot.view()
+                ####
+
+                # --- update for droprank end---
+
+                loss.backward()
+
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_optfs()
+                if self._stop_training:
+                    break
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': self.embedding_layer.mask_weight.squeeze().tolist()})
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
+        return
     def fit_for_mvfs(self, data_generator, epochs=1, validation_data=None,
             max_gradient_norm=10., **kwargs):
         self.valid_gen = validation_data
@@ -667,7 +827,7 @@ class DCN(BaseModel):
                     logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
                     train_loss = 0
                     # eval the model
-                    self.eval_step()
+                    self.eval_mvfs()
                 if self._stop_training:
                     break
             if self._stop_training:
