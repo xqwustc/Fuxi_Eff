@@ -1,6 +1,6 @@
 # =========================================================================
 # Copyright (C) 2022. Huawei Technologies Co., Ltd. All rights reserved.
-#
+# 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -45,8 +45,6 @@ import torch
 import numpy as np
 import logging
 from infomer import email
-import pandas as pd
-import copy
 
 if __name__ == '__main__':
     ''' Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
@@ -56,7 +54,6 @@ if __name__ == '__main__':
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
     parser.add_argument('--cp', type=str, help='checkpoint path')
-    parser.add_argument('--epoch_pre', type=int, default=2, nargs='+', help='pretrain/main_train epochs')
     args = vars(parser.parse_args())
 
     experiment_id = args['expid']
@@ -84,61 +81,53 @@ if __name__ == '__main__':
     feature_map = FeatureMap(params['dataset_id'], data_dir)
     feature_map.load(feature_map_json, params)
 
-    # if params['dataset_id'] != 'ifly_chu':
-    logging.info('****** Warmup network without controller ******')
-    warmup_path = f"{params['model']}_{params['dataset_id']}_warmup4mv.pth"
     model_class = getattr(model_zoo, params['model'])
+    print('params[model]', params['model'])
     model = model_class(feature_map, **params)
-    model.count_parameters()
+    model.count_parameters()  # print number of parameters used in model
+
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    params_pretrain = copy.deepcopy(params)
-    params_pretrain['epochs'] = args['epoch_pre']
-    model.fit(train_gen, validation_data=valid_gen, **params_pretrain)
-    torch.save(model.state_dict(), warmup_path)
-    logging.info('****** Warmup end and save model in {} ******'.format(warmup_path))
+
+    # email.common_send('WD_PFI_select.py - Build Data',"")
+
+    if args.get('cp',None) != None:
+        print('load model from checkpoint')
+        model.load_state_dict(torch.load(args['cp']))
+    else:
+        model.fit(train_gen, validation_data=valid_gen, **params)
+
+    # email.common_send('WD_PFI_select.py - Training', "")
+
+    logging.info('****** Validation evaluation ******')
+    valid_result = model.evaluate(valid_gen)
     del train_gen, valid_gen
     gc.collect()
 
-    select_nums = []
-    AUCs = []
-    logloss = []
-    time_consumption = []
-    # incre = 10
-    # for i in range(0 + incre - 1, len(feature_map.features) + incre - 1, incre):
-    for i in [49,9,29]*3:
-        i = min(i, len(feature_map.features) - 1)
-        model_class = getattr(model_zoo, params['model'])
-        print('params[model]', params['model'])
-        model = model_class(feature_map, select_num=i + 1, **params)
-        # if params['dataset_id'] != 'ifly_chu':
-        #     model.load_state_dict(torch.load(warmup_path), strict=False)
-        select_nums.append(i + 1)
-        model.count_parameters()  # print number of parameters used in model
-        logging.info('Used Feature Number:{} '.format(i + 1))
+    # --- update for pfi start ---
+    file = open('exp_metric', 'wb')
+    pickle.dump(valid_result, file)
+    print('valid_result', valid_result)
+    file.close()
 
-        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-        if args.get('cp', None) != None:
-            print('load model from checkpoint')
-            model.load_state_dict(torch.load(args['cp']))
-        else:
-            start_time = datetime.now()
-            model.fit_for_mvfs(train_gen, validation_data=valid_gen, **params)
-            time_consumption.append((datetime.now() - start_time).total_seconds())
-        del train_gen, valid_gen
-        gc.collect()
+    logging.info('****** Validation with PFI *******')
+    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+    model.evaluate_with_pfi(valid_gen,valid_result)
+    del train_gen, valid_gen
+    gc.collect()
+    # --- update for pfi end ---
 
-        logging.info('******** Test evaluation ********')
-        test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
-        test_result = {}
-        if test_gen:
-            test_result = model.evaluate(test_gen)
-            AUCs.append(test_result['AUC'])
-            logloss.append(test_result['logloss'])
-        del test_gen
-        gc.collect()
-    # Save the result
-    topk_ablation_df = pd.DataFrame({'feature_num': select_nums,
-                                     'topk_logloss': logloss,
-                                     'topk_auc': AUCs,
-                                     'time_consumption': time_consumption})
-    topk_ablation_df.to_csv('feature_ablation.csv')
+    logging.info('******** Test evaluation ********')
+    test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
+    test_result = {}
+    if test_gen:
+        test_result = model.evaluate(test_gen)
+
+    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+    with open(result_filename, 'a+') as fw:
+        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+                 .format(datetime.now().strftime('%Y%m%d-%H%M%S'),
+                         ' '.join(sys.argv), experiment_id, params['dataset_id'],
+                         "N.A.", print_to_list(valid_result), print_to_list(test_result)))
+
+
+

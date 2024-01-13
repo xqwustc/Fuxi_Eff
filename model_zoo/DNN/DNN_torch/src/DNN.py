@@ -30,6 +30,8 @@ from tqdm import tqdm
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
+from fuxictr.pytorch.layers import MaskedFeatureEmbedding
+lamda_opt = 2e-9
 EPS = 1e-6
 
 
@@ -64,9 +66,27 @@ class DNN(BaseModel):
                              output_activation=self.output_activation,
                              dropout_rates=net_dropout,
                              batch_norm=batch_norm)
+        if kwargs.get('optfs',0) == 1:
+            if kwargs['dataset_id'] == 'avazu_x4':
+                temp = 5000
+            else:
+                temp = 1000
+            print('Using OptFS Embedding Layer with temp = ',temp)
+            self.embedding_layer = MaskedFeatureEmbedding(feature_map, embedding_dim,temp = temp)
+        else:
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
         if select_num > 0:
             self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
                                                  embed_dims=len(self.feature_map.features), num_selections=select_num)
+            # if kwargs['dataset_id'] == 'ifly_chu':
+            #     pre_path = '/home/Stev/proj/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/ifly_chu/'
+            #     pre_path += f'mvfs_select{select_num}.pth'
+            #     self.controller.load_state_dict(torch.load(pre_path))
+            #     for param in self.controller.parameters():
+            #         param.requires_grad = False
+            #     print('load pretrained mvfs controller from', pre_path)
+
         self.weight = 0
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
@@ -121,7 +141,45 @@ class DNN(BaseModel):
         return_dict = {"y_pred": y_pred}
         return return_dict
 
+    def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
+        pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
 
+        ## FIXME: 1 means the label column
+        total_field = len(self.feature_map.features) +  1
+        for feat_idx in range(total_field):
+            if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
+                continue
+            perm_gen = self._permute_feature(data_generator, feat_idx)
+            cur_result = self.evaluate(perm_gen, metrics=metrics)
+            diff = pd.DataFrame([{
+                'AUC': cur_result['AUC'] - valid_result['AUC'],
+                'logloss': cur_result['logloss'] - valid_result['logloss']
+            }])
+            pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
+
+        # Add feature name
+        pfi_score_res.insert(0,'feature_name',list(self.feature_map.features.keys()))
+
+        # Get the absolute value of AUC & logloss
+        pfi_score_res['AUC'] = pfi_score_res['AUC'].abs()
+        pfi_score_res['logloss'] = pfi_score_res['logloss'].abs()
+
+        # Sort by AUC and see AUC as the feature_weight
+        pfi_score_res = pfi_score_res.sort_values(by='AUC',ascending=False)
+        pfi_score_res.insert(1, 'feature_weight', pfi_score_res['AUC'])
+        pfi_score_res.to_csv('feature_importance_result.csv',index=False)
+        return
+    def forward_with_optfs(self, inputs):
+        """
+        Inputs: [X,y]
+        """
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        feature_emb = feature_emb.flatten(start_dim = 1)
+
+        y_pred = self.mlp(feature_emb)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
     def fit_for_autofield(self, data_generator, epochs=1, validation_data=None,
                           max_gradient_norm=10., **kwargs):
         self.valid_gen = validation_data
@@ -368,7 +426,7 @@ class DNN(BaseModel):
                     logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
                     train_loss = 0
                     # eval the model
-                    self.eval_step()
+                    self.eval_mvfs()
                 if self._stop_training:
                     break
             if self._stop_training:
@@ -379,6 +437,140 @@ class DNN(BaseModel):
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
 
+    def fit_for_optfs(self, data_generator, epochs=1, validation_data=None,
+                      max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        torch.autograd.set_detect_anomaly(True)
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                # --- update for droprank start---
+                return_dict = self.forward_with_optfs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                # --- update for droprank start---
+                loss += lamda_opt * self.embedding_layer.reg()
+
+                ####
+                # dot = make_dot(loss, params=dict(self.named_parameters()))
+                # dot.view()
+                ####
+
+                # --- update for droprank end---
+
+                loss.backward()
+
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_optfs()
+                if self._stop_training:
+                    break
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': self.embedding_layer.mask_weight.squeeze().tolist()})
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
+        return
+    def eval_mvfs(self):
+        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        self.eval()  # set to evaluation mode
+        data_generator = self.valid_gen
+        metrics = self._monitor.get_metrics()
+        with torch.no_grad():
+            y_pred = []
+            y_true = []
+            group_id = []
+            if self._verbose > 0:
+                data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_data in data_generator:
+                return_dict = self.forward_with_mvfs(batch_data)
+                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
+                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                if self.feature_map.group_id is not None:
+                    group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
+            y_pred = np.array(y_pred, np.float64)
+            y_true = np.array(y_true, np.float64)
+            group_id = np.array(group_id) if len(group_id) > 0 else None
+            if metrics is not None:
+                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+            else:
+                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+        super().checkpoint_and_earlystop(val_logs)
+        self.train()
+
+    def eval_optfs(self):
+        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        self.eval()  # set to evaluation mode
+        data_generator = self.valid_gen
+        metrics = self._monitor.get_metrics()
+        with torch.no_grad():
+            y_pred = []
+            y_true = []
+            group_id = []
+            if self._verbose > 0:
+                data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_data in data_generator:
+                return_dict = self.forward_with_optfs(batch_data)
+                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
+                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                if self.feature_map.group_id is not None:
+                    group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
+            y_pred = np.array(y_pred, np.float64)
+            y_true = np.array(y_true, np.float64)
+            group_id = np.array(group_id) if len(group_id) > 0 else None
+            if metrics is not None:
+                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+            else:
+                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+        super().checkpoint_and_earlystop(val_logs)
+        self.train()
     def weight_watcher(self):
         # TODO: run in debug mode
         # load gates weight in ../feature_importance_result.csv
@@ -402,3 +594,23 @@ class DNN(BaseModel):
         self.load_weights(self.checkpoint)
 
         self.eval()
+    def _permute_feature(self,data_generator, feature_idx):
+        """
+        Permutes the values of a specific feature in each batch produced by the data_generator.
+
+        Args:
+        - data_generator: Original data generator.
+        - feature_idx: The index of the feature you want to permute.
+
+        Yields:
+        - Batch with permuted feature values.
+        """
+        for batch in data_generator:
+            # Deep copy to avoid modifying the original batch
+            permuted_batch = batch.clone()
+
+            # Permute the feature using PyTorch functions
+            perm = torch.randperm(permuted_batch.size(0))
+            permuted_batch[:, feature_idx] = permuted_batch[perm, feature_idx]
+
+            yield permuted_batch
