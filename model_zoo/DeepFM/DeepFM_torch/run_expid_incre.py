@@ -99,10 +99,11 @@ if __name__ == '__main__':
     # total_times = 0
     # SOTA = 0.79315
     # while cur_AUC < SOTA:
-    incre = 5
+    incre = 1
+    for i in range(incre-1, df.shape[0]+incre-1, incre):
     # for i in range(8, 12):
     # for i in range(incre-1, df.shape[0]+incre-1, incre):
-    for i in range(df.shape[0]):
+    # for i in range(df.shape[0]):
         i = min(i, df.shape[0]-1)
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
