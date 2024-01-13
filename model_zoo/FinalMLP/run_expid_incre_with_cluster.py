@@ -105,7 +105,9 @@ if __name__ == '__main__':
     # for i in range(9, 13):
     # for i in [139,df.shape[0]-1]:
     # for i in range(8, 12):
-    for i in range(29 + incre - 1, df.shape[0] + incre - 1, incre):
+    # for i in range(29+incre - 1, df.shape[0] + incre - 1, incre):
+    for i in [36]*3:
+        i = min(i, df.shape[0] - 1)
         topk_params = copy.deepcopy(params)
         cur_features_rows = df.iloc[:i + 1, :]
 

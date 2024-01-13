@@ -196,7 +196,7 @@ DualMLP_iflychu: # This is a config template
     mlp2_hidden_activations: relu
     mlp2_dropout: 0
     mlp2_batch_norm: False
-    batch_size: 10000
+    batch_size: 8192  #
     embedding_dim: 16
     epochs: 100
     shuffle: True
