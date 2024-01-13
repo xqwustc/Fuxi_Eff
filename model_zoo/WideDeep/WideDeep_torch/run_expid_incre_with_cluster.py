@@ -95,7 +95,7 @@ if __name__ == '__main__':
     topk_column_name = []
     topk_logloss_result = []
     topk_auc_result = []
-
+    time_consumption = []
 
     # for i in range(df.shape[0]):
     # for i in range(df.shape[0]-1, 11, -1):
@@ -105,9 +105,9 @@ if __name__ == '__main__':
     # for i in range(9, 13):
     # for i in [139,df.shape[0]-1]:
     # for i in range(8, 12):
-    incre = 1
-    for i in range(30 + incre - 1, df.shape[0] + incre - 1, incre):
-    #for i in [9]*40:
+    # incre = 1
+    # for i in range(30 + incre - 1, df.shape[0] + incre - 1, incre):
+    for i in [32,33]*3:
     # for i in [19,19,19,244,244,244]:
         i = min(i, df.shape[0] - 1)
         topk_params = copy.deepcopy(params)
@@ -139,7 +139,9 @@ if __name__ == '__main__':
         topk_model.count_parameters()  # print number of parameters used in model
 
         train_gen, valid_gen, test_gen = H5DataLoader(topk_feature_map, stage='both', **topk_params).make_iterator()
+        start_time = datetime.now()
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
+        time_consumption.append((datetime.now() - start_time).seconds)
         valid_result = topk_model.evaluate(test_gen)
 
         topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
@@ -152,5 +154,6 @@ if __name__ == '__main__':
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
-                                     'topk_auc': topk_auc_result})
+                                     'topk_auc': topk_auc_result,
+                                     'time_consumption': time_consumption})
     topk_ablation_df.to_csv('feature_ablation.csv')

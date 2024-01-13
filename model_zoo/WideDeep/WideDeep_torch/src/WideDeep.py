@@ -18,7 +18,7 @@ import os
 import torch
 from torch import nn
 from fuxictr.pytorch.models import BaseModel
-from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block, LogisticRegression
+from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block, LogisticRegression, MaskedFeatureEmbedding
 import numpy as np
 from tqdm import tqdm
 import sys
@@ -36,7 +36,7 @@ import feat_select.MvFS_module as Mv
 
 EPS = 1e-6
 lamda = 1e-5 # 1e-3
-
+lamda_opt = 2e-9
 class WideDeep(BaseModel):
     def __init__(self, 
                  feature_map, 
@@ -58,7 +58,18 @@ class WideDeep(BaseModel):
                                        embedding_regularizer=embedding_regularizer, 
                                        net_regularizer=net_regularizer,
                                        **kwargs)
-        self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
+        # deal with optfs
+        if kwargs.get('optfs',0) == 1:
+            print('Using OptFS Embedding Layer')
+            if kwargs['dataset_id'] == 'criteo_x4':
+                temp = 1000
+            else:
+                temp = 5000
+            print('Using OptFS Embedding Layer with temp = ', temp)
+            self.embedding_layer = MaskedFeatureEmbedding(feature_map, embedding_dim,temp = temp)
+        else:
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
 
         self.interpolate_n = 5
         self.learning_rate = learning_rate
@@ -99,6 +110,21 @@ class WideDeep(BaseModel):
         X = self.get_inputs(inputs)
         # feature_emb = self.embedding_layer(X)
         feature_emb = self.embedding_layer(X,flatten_emb=True)
+        y_pred = self.lr_layer(X)
+        # y_pred += self.dnn(feature_emb.flatten(start_dim=1))
+        y_pred += self.dnn(feature_emb)
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def forward_with_optfs(self, inputs):
+        """
+        Inputs: [X,y]
+        """
+        X = self.get_inputs(inputs)
+        # feature_emb = self.embedding_layer(X)
+        feature_emb = self.embedding_layer(X)
+        feature_emb = feature_emb.flatten(start_dim = 1)
         y_pred = self.lr_layer(X)
         # y_pred += self.dnn(feature_emb.flatten(start_dim=1))
         y_pred += self.dnn(feature_emb)
@@ -342,6 +368,86 @@ class WideDeep(BaseModel):
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 
+    def fit_for_optfs(self, data_generator, epochs=1, validation_data=None,
+                   max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        torch.autograd.set_detect_anomaly(True)
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                # --- update for droprank start---
+                return_dict = self.forward_with_optfs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+
+                # --- update for droprank start---
+                loss += lamda_opt*self.embedding_layer.reg()
+
+                ####
+                # dot = make_dot(loss, params=dict(self.named_parameters()))
+                # dot.view()
+                ####
+
+                # --- update for droprank end---
+
+                loss.backward()
+
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_optfs()
+                if self._stop_training:
+                    break
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
+                                                  'feature_weight': self.embedding_layer.mask_weight.squeeze().tolist()})
+        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
+        return
+
     def fit_for_autofield(self, data_generator, epochs=1, validation_data=None,
                           max_gradient_norm=10., **kwargs):
         self.valid_gen = validation_data
@@ -492,7 +598,7 @@ class WideDeep(BaseModel):
                     logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
                     train_loss = 0
                     # eval the model
-                    self.eval_step()
+                    self.eval_mvfs()
                 if self._stop_training:
                     break
             if self._stop_training:
@@ -558,7 +664,61 @@ class WideDeep(BaseModel):
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
 
         return
+    def eval_mvfs(self):
+        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        self.eval()  # set to evaluation mode
+        data_generator = self.valid_gen
+        metrics = self._monitor.get_metrics()
+        with torch.no_grad():
+            y_pred = []
+            y_true = []
+            group_id = []
+            if self._verbose > 0:
+                data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_data in data_generator:
+                return_dict = self.forward_with_mvfs(batch_data)
+                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
+                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                if self.feature_map.group_id is not None:
+                    group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
+            y_pred = np.array(y_pred, np.float64)
+            y_true = np.array(y_true, np.float64)
+            group_id = np.array(group_id) if len(group_id) > 0 else None
+            if metrics is not None:
+                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+            else:
+                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+        super().checkpoint_and_earlystop(val_logs)
+        self.train()
 
+    def eval_optfs(self):
+        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        self.eval()  # set to evaluation mode
+        data_generator = self.valid_gen
+        metrics = self._monitor.get_metrics()
+        with torch.no_grad():
+            y_pred = []
+            y_true = []
+            group_id = []
+            if self._verbose > 0:
+                data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_data in data_generator:
+                return_dict = self.forward_with_optfs(batch_data)
+                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
+                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                if self.feature_map.group_id is not None:
+                    group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
+            y_pred = np.array(y_pred, np.float64)
+            y_true = np.array(y_true, np.float64)
+            group_id = np.array(group_id) if len(group_id) > 0 else None
+            if metrics is not None:
+                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+            else:
+                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+        super().checkpoint_and_earlystop(val_logs)
+        self.train()
     def save_mv_controller(self,K,dataset_id):
         directory = f"./{dataset_id}"
 

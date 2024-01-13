@@ -124,13 +124,13 @@ if __name__ == '__main__':
     # total_times = 0
     # SOTA = 0.79295
 
-    # incre = 10
-    # for i in range(incre-1, df.shape[0]+incre-1, incre):
+    incre = 1
+    for i in range(29+incre-1, df.shape[0]+incre-1, incre):
 
-    # for i in [19,19,19,79,79,79,59,59,59,89,89,89]:
+    # for i in [159]*3:
     # for i in [239,199,219,109,119,229,149,189]:
     # for i in [31,33]*3:
-    for i in range(30, df.shape[0], 1):
+    # for i in range(0, df.shape[0], 1):
         i = min(i, df.shape[0] - 1)
     # while cur_AUC < SOTA:
     #     for i in range(8, 13):
