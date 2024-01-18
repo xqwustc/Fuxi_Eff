@@ -94,13 +94,14 @@ if __name__ == '__main__':
     topk_column_name = []
     topk_logloss_result = []
     topk_auc_result = []
+    time_consumption = []
     #
     # cur_AUC = 0
     # total_times = 0
     # SOTA = 0.79315
     # while cur_AUC < SOTA:
     incre = 1
-    for i in range(incre-1, df.shape[0]+incre-1, incre):
+    for i in range(9+incre-1, df.shape[0]+incre-1, incre):
     # for i in range(8, 12):
     # for i in range(incre-1, df.shape[0]+incre-1, incre):
     # for i in range(df.shape[0]):
@@ -116,10 +117,13 @@ if __name__ == '__main__':
         topk_model = model_class(topk_feature_map, **topk_params)
         topk_model.count_parameters()  # print number of parameters used in model
 
-        train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
-        topk_model.fit(train_gen, validation_data=valid_gen, **params)
+        train_gen, valid_gen, test_gen = H5DataLoader(topk_feature_map, stage='both', **topk_params).make_iterator()
+        # valid_gen,test_gen = test_gen,valid_gen
 
-        test_gen = H5DataLoader(topk_feature_map, stage='test', **params).make_iterator()
+        start_time = datetime.now()
+        topk_model.fit(train_gen, validation_data=valid_gen, **params)
+        time_consumption.append((datetime.now() - start_time).seconds)
+
         valid_result = topk_model.evaluate(test_gen)
 
         topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
@@ -127,18 +131,12 @@ if __name__ == '__main__':
         topk_auc_result.append(valid_result['AUC'])
         cur_AUC = valid_result['AUC']
 
-        # email.common_send('DCN_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
-        del train_gen, valid_gen
+        del train_gen, valid_gen, test_gen
         gc.collect()
 
-        # if cur_AUC >= SOTA:
-        #     break
-
-    # Log times with color
-    # total_times += 1
-    # logging.info('Time: {}'.format(total_times))
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
-                                     'topk_auc': topk_auc_result})
+                                     'topk_auc': topk_auc_result,
+                                     'time_consumption':time_consumption})
     topk_ablation_df.to_csv('feature_ablation.csv')
