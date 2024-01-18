@@ -102,7 +102,21 @@ class WideDeep(BaseModel):
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()
-            
+
+    def get_total_parameters(self):
+        # only embedding layer and controller params will be counted
+        params = 0
+
+        # embedding layer
+        for emb in  self.embedding_layer.embedding_layer.embedding_layers.values():
+            params += sum(p.numel() for p in emb.parameters())
+
+        # controller
+        if hasattr(self,'controller'):
+            for param in self.controller.parameters():
+                params += param.numel()
+
+        return params
     def forward(self, inputs):
         """
         Inputs: [X,y]
@@ -664,10 +678,11 @@ class WideDeep(BaseModel):
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
 
         return
-    def eval_mvfs(self):
+    def eval_mvfs(self,data_generator = None):
         logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
         self.eval()  # set to evaluation mode
-        data_generator = self.valid_gen
+        if data_generator is None:
+            data_generator = self.valid_gen
         metrics = self._monitor.get_metrics()
         with torch.no_grad():
             y_pred = []
