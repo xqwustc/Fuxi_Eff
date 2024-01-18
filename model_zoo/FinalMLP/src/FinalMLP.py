@@ -87,6 +87,20 @@ class FinalMLP(BaseModel):
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()
+    def get_total_parameters(self):
+        # only embedding layer and controller params will be counted
+        params = 0
+
+        # embedding layer
+        for emb in  self.embedding_layer.embedding_layer.embedding_layers.values():
+            params += sum(p.numel() for p in emb.parameters())
+
+        # controller
+        if hasattr(self,'controller'):
+            for param in self.controller.parameters():
+                params += param.numel()
+
+        return params
             
     def forward(self, inputs):
         """
