@@ -7,6 +7,7 @@ import numpy as np
 EPS = 1e-8
 from statistics import NormalDist
 from sklearn.cluster import KMeans
+from sklearn_extra.cluster import KMedoids
 
 # def get_gate_vector(feature_size):
 #     # the vector size is (1, \sigma{feature_emb_size}), each time call this function will make different gates
@@ -38,10 +39,15 @@ def cluster_features(features: pd.DataFrame, group_num=3):
         for j in range(n):
             distance_matrix[i, j] = 1 - calculate_overlap(features.iloc[i, 1], features.iloc[i, 2], features.iloc[j, 1], features.iloc[j, 2])
 
-    kmeans = KMeans(n_clusters=group_num, random_state=0).fit(distance_matrix)
-
+    # kmeans = KMeans(n_clusters=group_num, random_state=0).fit(distance_matrix)
     clustered_df = features.copy()
-    clustered_df['label'] = kmeans.labels_
+    # clustered_df['label'] = kmeans.labels_
+
+    kmedoids = KMedoids(n_clusters=3, metric='precomputed', random_state=0)
+    # 适配模型
+    kmedoids.fit(distance_matrix)
+    # 获取聚类标签
+    clustered_df['label'] = kmedoids.labels_
 
     min_indices = clustered_df.reset_index().groupby('label')['index'].min()
 
