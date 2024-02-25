@@ -706,6 +706,7 @@ class WideDeep(BaseModel):
             logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
         super().checkpoint_and_earlystop(val_logs)
         self.train()
+        return val_logs
 
     def eval_optfs(self):
         logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))

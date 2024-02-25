@@ -138,7 +138,7 @@ if __name__ == '__main__':
         test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
         test_result = {}
         if test_gen:
-            test_result = model.evaluate(test_gen)
+            test_result = model.eval_mvfs(test_gen)
             AUCs.append(test_result['AUC'])
             logloss.append(test_result['logloss'])
         del test_gen

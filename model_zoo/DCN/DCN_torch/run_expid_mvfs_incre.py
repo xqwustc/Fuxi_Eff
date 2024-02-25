@@ -105,7 +105,8 @@ if __name__ == '__main__':
     # for i in range(0, len(feature_map.features)):
     # for i in [6,6,6]:
     incre = 1
-    for i in range(29+incre - 1, len(feature_map.features) + incre - 1, incre):
+    for i in [2,3,4]:
+    # for i in range(29+incre - 1, len(feature_map.features) + incre - 1, incre):
     # for i in [244,229,19,29,39,239]:
     # for i in [19,29,39,109,119,129,139,149,159,169,179,189,199,209,219,229,239,244]:
         i = min(i, len(feature_map.features)-1)
@@ -132,7 +133,7 @@ if __name__ == '__main__':
         test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
         test_result = {}
         if test_gen:
-            test_result = model.evaluate(test_gen)
+            test_result = model.eval_mvfs(test_gen)
             AUCs.append(test_result['AUC'])
             logloss.append(test_result['logloss'])
         del test_gen
