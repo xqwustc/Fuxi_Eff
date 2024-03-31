@@ -137,7 +137,7 @@ class DeepFM(BaseModel):
 
         torch.autograd.set_detect_anomaly(True)
         # Make a list of theta for each feature
-        gates_theta = torch.ones(len(self.feature_map.features)) * 0
+        gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
         gates_theta.requires_grad_(requires_grad=True)
 
         gates_sigma = torch.ones(len(self.feature_map.features)) * 0.5

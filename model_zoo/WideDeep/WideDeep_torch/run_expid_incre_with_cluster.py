@@ -107,7 +107,7 @@ if __name__ == '__main__':
     # for i in range(8, 12):
     # incre = 1
     # for i in range(30 + incre - 1, df.shape[0] + incre - 1, incre):
-    for i in [32,33]*3:
+    for i in [2,3,4,5,6,7,8]*3:
     # for i in [19,19,19,244,244,244]:
         i = min(i, df.shape[0] - 1)
         topk_params = copy.deepcopy(params)

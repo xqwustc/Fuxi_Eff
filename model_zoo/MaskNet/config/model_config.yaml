@@ -65,3 +65,138 @@ MaskNet_default: # This is a config template
     seed: 2021
     monitor: 'AUC'
     monitor_mode: 'max'
+
+MaskNet_criteo: # This is a config template
+    model: MaskNet
+    dataset_id: criteo_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000
+    embedding_dim: 40
+    dnn_hidden_units: [400, 400, 400]
+    dnn_hidden_activations: relu
+    model_type: SerialMaskNet
+    parallel_num_blocks: 1
+    parallel_block_dim: 64
+    reduction_ratio: 1
+    emb_layernorm: True
+    net_layernorm: True
+    net_dropout: 0
+    epochs: 100
+    shuffle: True
+    seed: 2021
+    monitor: 'AUC'
+    monitor_mode: 'max'
+
+MaskNet_avazu: # This is a config template
+    model: MaskNet
+    dataset_id: avazu_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000
+    embedding_dim: 40
+    dnn_hidden_units: [400, 400, 400]
+    dnn_hidden_activations: relu
+    model_type: SerialMaskNet
+    parallel_num_blocks: 1
+    parallel_block_dim: 64
+    reduction_ratio: 1
+    emb_layernorm: True
+    net_layernorm: True
+    net_dropout: 0
+    epochs: 100
+    shuffle: True
+    seed: 2021
+    monitor: 'AUC'
+    monitor_mode: 'max'
+
+MaskNet_iflychu: # This is a config template
+    model: MaskNet
+    dataset_id: ifly_chu
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000
+    embedding_dim: 40
+    dnn_hidden_units: [400, 400, 400]
+    dnn_hidden_activations: relu
+    model_type: SerialMaskNet
+    parallel_num_blocks: 1
+    parallel_block_dim: 64
+    reduction_ratio: 1
+    emb_layernorm: True
+    net_layernorm: True
+    net_dropout: 0
+    epochs: 100
+    shuffle: True
+    seed: 2021
+    monitor: 'AUC'
+    monitor_mode: 'max'
+
+MaskNet_frappe: # This is a config template
+    model: MaskNet
+    dataset_id: frappe_x1
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000
+    embedding_dim: 40
+    dnn_hidden_units: [400, 400, 400]
+    dnn_hidden_activations: relu
+    model_type: SerialMaskNet
+    parallel_num_blocks: 1
+    parallel_block_dim: 64
+    reduction_ratio: 1
+    emb_layernorm: True
+    net_layernorm: True
+    net_dropout: 0
+    epochs: 100
+    shuffle: True
+    seed: 2021
+    monitor: 'AUC'
+    monitor_mode: 'max'
+
+MaskNet_movielens: # This is a config template
+    model: MaskNet
+    dataset_id: movielens
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000
+    embedding_dim: 40
+    dnn_hidden_units: [400, 400, 400]
+    dnn_hidden_activations: relu
+    model_type: SerialMaskNet
+    parallel_num_blocks: 1
+    parallel_block_dim: 64
+    reduction_ratio: 1
+    emb_layernorm: True
+    net_layernorm: True
+    net_dropout: 0
+    epochs: 100
+    shuffle: True
+    seed: 2021
+    monitor: 'AUC'
+    monitor_mode: 'max'

@@ -100,8 +100,8 @@ if __name__ == '__main__':
     # total_times = 0
     # SOTA = 0.79315
     # while cur_AUC < SOTA:
-    incre = 1
-    for i in range(9+incre-1, df.shape[0]+incre-1, incre):
+    incre = 10
+    for i in range(incre-1, df.shape[0]+incre-1, incre):
     # for i in range(8, 12):
     # for i in range(incre-1, df.shape[0]+incre-1, incre):
     # for i in range(df.shape[0]):

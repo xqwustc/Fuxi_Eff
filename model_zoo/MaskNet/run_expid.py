@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-
+import sys
+sys.path.append('../../fuxictr')
+sys.path.append('../../')
 
 import os
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
@@ -65,19 +67,20 @@ if __name__ == '__main__':
     model = model_class(feature_map, **params)
     model.count_parameters() # print number of parameters used in model
 
-    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+    train_gen, valid_gen, test_gen = H5DataLoader(feature_map, stage='both', **params).make_iterator()
     model.fit(train_gen, validation_data=valid_gen, **params)
 
     logging.info('****** Validation evaluation ******')
     valid_result = model.evaluate(valid_gen)
     del train_gen, valid_gen
     gc.collect()
-    
+
     logging.info('******** Test evaluation ********')
-    test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
     test_result = {}
     if test_gen:
       test_result = model.evaluate(test_gen)
+    del test_gen
+    gc.collect()
     
     result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
     with open(result_filename, 'a+') as fw:

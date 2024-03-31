@@ -108,7 +108,7 @@ if __name__ == '__main__':
     # for i in range(incre - 1, df.shape[0] + incre - 1, incre):
     # for i in [9]*5:
 
-    choice = True
+    choice = False
     if choice:
         stop_while = False
         best_auc = 0.8860
@@ -165,7 +165,7 @@ if __name__ == '__main__':
             if stop_while:
                 break
     else:
-        for i in [9]*20:
+        for i in [2,3,4,5,6,7,8,9]*5:
             i = min(i, df.shape[0] - 1)
             topk_params = copy.deepcopy(params)
             cur_features_rows = df.iloc[:i + 1, :]
