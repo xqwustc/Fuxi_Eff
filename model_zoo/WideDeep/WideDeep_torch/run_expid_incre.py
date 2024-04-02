@@ -130,8 +130,8 @@ if __name__ == '__main__':
 
     # for i in [159]*3:
     # for i in [29]*3:
-    # for i in [21]*5:
-    for i in range(0, df.shape[0], 1):
+    # for i in [7]*5:
+    for i in range(3, df.shape[0], 1):
         i = min(i, df.shape[0] - 1)
     # while cur_AUC < SOTA:
     #     for i in range(8, 13):

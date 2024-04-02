@@ -28,7 +28,7 @@ import pandas as pd
 from tqdm import tqdm
 from feat_select.AdaFS_module import AdaFS
 import sys
-from model_zoo.utils import get_gates_prob_my,get_sum_feature_dimisions,get_gates_prob_autofield
+from model_zoo.utils import get_gates_prob_my,get_sum_feature_dimisions,get_gates_prob_autofield,permute_feature
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
@@ -627,18 +627,37 @@ class WideDeep(BaseModel):
 
         pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
 
-        ## FIXME: 1 means the label column
-        total_field = len(self.feature_map.features) +  1
-        for feat_idx in range(total_field):
-            if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
-                continue
-            perm_gen = self._permute_feature(data_generator, feat_idx)
-            cur_result = self.evaluate(perm_gen, metrics=metrics)
-            diff = pd.DataFrame([{
-                'AUC': cur_result['AUC'] - valid_result['AUC'],
-                'logloss': cur_result['logloss'] - valid_result['logloss']
-            }])
-            pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
+        if max(self.feature_map.column_index.values(),
+               key=lambda x: max(x) if isinstance(x, list) else x) + 1 \
+                == len(self.feature_map.column_index):
+            # one field one column
+            ## FIXME: 1 means the label column
+            total_field = len(self.feature_map.features) + 1
+
+            for feat_idx in range(total_field):
+                if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
+                    continue
+                perm_gen = permute_feature(data_generator, feat_idx)
+                cur_result = self.evaluate(perm_gen, metrics=metrics)
+                diff = pd.DataFrame([{
+                    'AUC': cur_result['AUC'] - valid_result['AUC'],
+                    'logloss': cur_result['logloss'] - valid_result['logloss']
+                }])
+
+                pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
+        else:
+            # one field multiple columns
+            for feat_name, ids in self.feature_map.column_index.items():  # .items() default order of insert is kept
+                if feat_name == self.feature_map.labels[0]:
+                    continue
+                perm_gen = permute_feature(data_generator, ids)
+                cur_result = self.evaluate(perm_gen, metrics=metrics)
+                diff = pd.DataFrame([{
+                    'AUC': cur_result['AUC'] - valid_result['AUC'],
+                    'logloss': cur_result['logloss'] - valid_result['logloss']
+                }])
+
+                pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
 
         # Add feature name
         pfi_score_res.insert(0,'feature_name',list(self.feature_map.features.keys()))
@@ -743,27 +762,6 @@ class WideDeep(BaseModel):
 
         # 保存模型
         torch.save(self.controller.state_dict(), f"{directory}/mvfs_select{K}.pth")
-
-    def _permute_feature(self,data_generator, feature_idx):
-        """
-        Permutes the values of a specific feature in each batch produced by the data_generator.
-
-        Args:
-        - data_generator: Original data generator.
-        - feature_idx: The index of the feature you want to permute.
-
-        Yields:
-        - Batch with permuted feature values.
-        """
-        for batch in data_generator:
-            # Deep copy to avoid modifying the original batch
-            permuted_batch = batch.clone()
-
-            # Permute the feature using PyTorch functions
-            perm = torch.randperm(permuted_batch.size(0))
-            permuted_batch[:, feature_idx] = permuted_batch[perm, feature_idx]
-
-            yield permuted_batch
 
     def _get_gates_prob(self, gates_theta, gates_sigma):
         assert len(gates_theta) == len(gates_sigma), "gates_theta and gates_sigma should have the same length"
