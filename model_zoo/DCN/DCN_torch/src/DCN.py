@@ -388,18 +388,39 @@ class DCN(BaseModel):
     def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
         pfi_score_res = pd.DataFrame(columns=['AUC', 'logloss'])
 
-        ## FIXME: 1 means the label column
-        total_field = len(self.feature_map.features) +  1
-        for feat_idx in range(total_field):
-            if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
-                continue
-            perm_gen = self._permute_feature(data_generator, feat_idx)
-            cur_result = self.evaluate(perm_gen, metrics=metrics)
-            diff = pd.DataFrame([{
-                'AUC': cur_result['AUC'] - valid_result['AUC'],
-                'logloss': cur_result['logloss'] - valid_result['logloss']
-            }])
-            pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
+        print("column index of label:", self.feature_map.get_column_index(self.feature_map.labels[0]))
+
+        if max(self.feature_map.column_index.values(),
+               key=lambda x: max(x) if isinstance(x, list) else x) + 1 \
+                == len(self.feature_map.column_index):
+            # one field one column
+            ## FIXME: 1 means the label column
+            total_field = len(self.feature_map.features) + 1
+            
+            for feat_idx in range(total_field):
+                if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
+                    continue
+                perm_gen = self._permute_feature(data_generator, feat_idx)
+                cur_result = self.evaluate(perm_gen, metrics=metrics)
+                diff = pd.DataFrame([{
+                    'AUC': cur_result['AUC'] - valid_result['AUC'],
+                    'logloss': cur_result['logloss'] - valid_result['logloss']
+                }])
+
+                pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
+        else:
+            # one field multiple columns
+            for feat_name,ids in self.feature_map.column_index.items(): # .items() default order of insert is kept
+                if feat_name == self.feature_map.labels[0]:
+                    continue
+                perm_gen = self._permute_feature(data_generator, ids)
+                cur_result = self.evaluate(perm_gen, metrics=metrics)
+                diff = pd.DataFrame([{
+                    'AUC': cur_result['AUC'] - valid_result['AUC'],
+                    'logloss': cur_result['logloss'] - valid_result['logloss']
+                }])
+
+                pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
 
         # Add feature name
         pfi_score_res.insert(0,'feature_name',list(self.feature_map.features.keys()))
