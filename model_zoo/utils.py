@@ -118,3 +118,27 @@ def get_sum_feature_dimisions(embedding_layer):
         else:
             raise TypeError(f"Unsupported layer type {type(layer)} for layer {name}")
     return total_dimensions
+
+def permute_feature(data_generator, feature_idx):
+    """
+    Permutes the values of a specific feature in each batch produced by the data_generator.
+
+    Args:
+    - data_generator: Original data generator.
+    - feature_idx: The index of the feature you want to permute.
+
+    Yields:
+    - Batch with permuted feature values.
+    """
+    if not isinstance(feature_idx, list):
+        feature_idx = [feature_idx]
+
+    for batch in data_generator:
+        # Deep copy to avoid modifying the original batch
+        permuted_batch = batch.clone()
+
+        # Permute the feature using PyTorch functions
+        perm = torch.randperm(permuted_batch.size(0))
+        permuted_batch[:, feature_idx] = permuted_batch[perm, :][:, feature_idx]
+
+        yield permuted_batch
