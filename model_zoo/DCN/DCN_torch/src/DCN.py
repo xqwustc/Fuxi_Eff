@@ -28,7 +28,7 @@ from torch import log
 import pandas as pd
 from feat_select.AdaFS_module import AdaFS,AdaFS_hard
 import torch.nn.functional as F
-from model_zoo.utils import get_gates_prob_autofield,get_gates_prob_my,get_sum_feature_dimisions
+from model_zoo.utils import get_gates_prob_autofield,get_gates_prob_my,get_sum_feature_dimisions,permute_feature
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
@@ -400,7 +400,7 @@ class DCN(BaseModel):
             for feat_idx in range(total_field):
                 if feat_idx == self.feature_map.get_column_index(self.feature_map.labels[0]):
                     continue
-                perm_gen = self._permute_feature(data_generator, feat_idx)
+                perm_gen = permute_feature(data_generator, feat_idx)
                 cur_result = self.evaluate(perm_gen, metrics=metrics)
                 diff = pd.DataFrame([{
                     'AUC': cur_result['AUC'] - valid_result['AUC'],
@@ -413,7 +413,7 @@ class DCN(BaseModel):
             for feat_name,ids in self.feature_map.column_index.items(): # .items() default order of insert is kept
                 if feat_name == self.feature_map.labels[0]:
                     continue
-                perm_gen = self._permute_feature(data_generator, ids)
+                perm_gen = permute_feature(data_generator, ids)
                 cur_result = self.evaluate(perm_gen, metrics=metrics)
                 diff = pd.DataFrame([{
                     'AUC': cur_result['AUC'] - valid_result['AUC'],
@@ -902,25 +902,4 @@ class DCN(BaseModel):
     def _get_featuremap_size(self,feature_map):
         # 先写死每个维度的emb_size = 32，后续可以改成从feature_map中读取
         return [32]*len(feature_map.features)
-
-    def _permute_feature(self,data_generator, feature_idx):
-        """
-        Permutes the values of a specific feature in each batch produced by the data_generator.
-
-        Args:
-        - data_generator: Original data generator.
-        - feature_idx: The index of the feature you want to permute.
-
-        Yields:
-        - Batch with permuted feature values.
-        """
-        for batch in data_generator:
-            # Deep copy to avoid modifying the original batch
-            permuted_batch = batch.clone()
-
-            # Permute the feature using PyTorch functions
-            perm = torch.randperm(permuted_batch.size(0))
-            permuted_batch[:, feature_idx] = permuted_batch[perm, feature_idx]
-
-            yield permuted_batch
 
