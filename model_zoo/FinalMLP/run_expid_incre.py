@@ -110,9 +110,9 @@ if __name__ == '__main__':
         # SOTA = 0.79256
         # while cur_AUC < SOTA:
         # for i in range(9, df.shape[0],10):
-    # incre = 10
-    # for i in range(incre-1, df.shape[0]+incre-1, incre):
-    for i in [119,244]*5:
+    incre = 1
+    for i in range(incre-1, df.shape[0]+incre-1, incre):
+    # for i in [119,244]*5:
     # for i in [244,209,179]*5:
         i = min(i, df.shape[0] - 1)
         topk_params = copy.deepcopy(params)
