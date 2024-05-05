@@ -1,3 +1,5 @@
+import random
+
 import math
 import torch.nn as nn
 import torch
@@ -6,7 +8,7 @@ import pandas as pd
 import numpy as np
 EPS = 1e-8
 from statistics import NormalDist
-from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn_extra.cluster import KMedoids
 
 # def get_gate_vector(feature_size):
@@ -60,6 +62,22 @@ def cluster_features(features: pd.DataFrame, group_num=3):
 
     return clustered_df
 
+def get_embsize_by_vocab(feature_map):
+    size_map = dict()
+    for feature_name, feature_info in feature_map.features.items():
+        if feature_info.get('vocab_size', None) is not None:
+            size_map[feature_name] = int(feature_info['vocab_size']**0.25)
+    return size_map
+
+def get_embsize_by_pca(cur_model,ratio=0.95):
+    size_map = dict()
+    emb_dict = cur_model.embedding_layer.embedding_layer.embedding_layers
+    for feature_name, emb in emb_dict.items():
+        cur_emb = emb.weight.detach().cpu().numpy()
+        pca = PCA(n_components=ratio)
+        pca.fit(cur_emb)
+        size_map[feature_name] = pca.n_components_
+    return size_map
 
 def calculate_overlap(mu1, sigma1, mu2, sigma2):
     return NormalDist(mu=mu1, sigma=sigma1).overlap(NormalDist(mu=mu2, sigma=sigma2))
@@ -118,6 +136,13 @@ def get_sum_feature_dimisions(embedding_layer):
         else:
             raise TypeError(f"Unsupported layer type {type(layer)} for layer {name}")
     return total_dimensions
+
+def create_unique_vector(a, b):
+    if b > a:
+        raise ValueError("b cannot be greater than a.")
+    random_numbers = random.sample(range(a), b)
+    vector = np.array(random_numbers)
+    return vector.tolist()
 
 def permute_feature(data_generator, feature_idx):
     """
