@@ -78,9 +78,15 @@ class DeepFM(BaseModel):
         Inputs: [X,y]
         """
         X = self.get_inputs(inputs)
-        feature_emb = self.embedding_layer(X)  # like(size,features,emb_size), the embedding info got
-        y_pred = self.fm(X, feature_emb)
-        y_pred += self.mlp(feature_emb.flatten(start_dim=1))
+        embed_res = self.embedding_layer(X)  # like(size,features,emb_size), the embedding info got
+        if isinstance(embed_res, tuple):
+            feature_emb_stack, feature_emb_cat = embed_res
+        else:
+            feature_emb_stack = embed_res
+            feature_emb_cat = feature_emb_stack.flatten(start_dim=1)
+
+        y_pred = self.fm(X, feature_emb_stack)
+        y_pred += self.mlp(feature_emb_cat)
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict

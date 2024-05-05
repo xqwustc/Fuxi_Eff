@@ -62,8 +62,12 @@ class FM(BaseModel):
         Inputs: [X, y]
         """
         X = self.get_inputs(inputs)
-        feature_emb = self.embedding_layer(X)
-        y_pred = self.fm(X, feature_emb)
+        embed_res = self.embedding_layer(X)
+        if isinstance(embed_res, tuple):
+            feature_emb_pad, _ = embed_res
+        else:
+            feature_emb_pad = embed_res
+        y_pred = self.fm(X, feature_emb_pad)
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
