@@ -187,7 +187,21 @@ class FeatureEmbeddingDict(nn.Module):
         if flatten_emb:
             feature_emb = torch.cat(feature_emb_list, dim=-1)
         else:
-            feature_emb = torch.stack(feature_emb_list, dim=1)
+            # pad the unequal length sequence
+            max_width = max([emb.size(1) for emb in feature_emb_list])
+            if all(emb.size(1) == max_width for emb in feature_emb_list):
+                return torch.stack(feature_emb_list, dim=1)
+            else:
+                feature_emb_cat = torch.cat(feature_emb_list, dim=-1)
+                for i, emb in enumerate(feature_emb_list):
+                    if emb.size(1) < max_width:
+                        diff = max_width - emb.size(1)
+                        mean = emb.mean(dim=1, keepdim=True)
+                        # TODO: check detach() & whether padding with mean is a good idea
+                        padding = mean.detach().repeat(1, diff)
+                        feature_emb_list[i] = torch.cat([emb, padding], dim=1)
+                feature_emb_pad = torch.stack(feature_emb_list, dim=1)
+                return feature_emb_pad, feature_emb_cat
         return feature_emb
 
     def forward(self, inputs, feature_source=[], feature_type=[]):
