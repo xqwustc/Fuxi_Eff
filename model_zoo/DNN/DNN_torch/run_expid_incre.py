@@ -110,8 +110,10 @@ if __name__ == '__main__':
         # while cur_AUC < SOTA:
         # for i in range(9, df.shape[0],10):
 
-    incre = 1
-    for i in range(incre-1, df.shape[0]+incre-1, incre):
+    # incre = 1
+    # for i in range(incre-1, df.shape[0]+incre-1, incre):
+    for i in [9]*5:
+    # for i in [3,4]*3:
     # for i in [149,229,239,219]*5:
     # for i in [33,34,38]*2:
     # for i in [119,189]*3:
@@ -145,8 +147,6 @@ if __name__ == '__main__':
         del train_gen, valid_gen, test_gen
         gc.collect()
 
-        # if cur_AUC >= SOTA:
-        #     break
 
     # Log times with color
     # total_times += 1

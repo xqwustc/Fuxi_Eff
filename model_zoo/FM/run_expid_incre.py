@@ -94,7 +94,8 @@ if __name__ == '__main__':
     topk_column_name = []
     topk_logloss_result = []
     topk_auc_result = []
-
+    time_consumption = []
+    inf_time = []
 
     # cur_AUC = 0
     # cur_logloss = 1
@@ -106,8 +107,9 @@ if __name__ == '__main__':
 
     # while cur_AUC < SOTA_AUC or cur_logloss > SOTA_logloss:
     # for i in range(8, 14):
-    incre = 1
+    incre = 10
     for i in range(0 + incre - 1, len(feature_map.features) + incre - 1, incre):
+    # for i in [244]:
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
         logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
@@ -122,8 +124,13 @@ if __name__ == '__main__':
         #train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
         train_gen, valid_gen, test_gen = H5DataLoader(topk_feature_map, stage='both', **topk_params).make_iterator()
 
+        start_time = datetime.now()
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
-        valid_result = topk_model.evaluate(valid_gen)
+        time_consumption.append((datetime.now() - start_time).seconds)
+
+        start_time = datetime.now()
+        valid_result = topk_model.evaluate(test_gen)
+        inf_time.append((datetime.now() - start_time).seconds)
 
         topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
         topk_logloss_result.append(valid_result['logloss'])
@@ -134,13 +141,11 @@ if __name__ == '__main__':
         del train_gen, valid_gen, test_gen
         gc.collect()
 
-        #     if cur_AUC >= SOTA_AUC and cur_logloss <= SOTA_logloss:
-        #         break
-        #
-        # total_times += 1
-        # logging.info('Time: {}'.format(total_times))
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
-                                     'topk_auc': topk_auc_result})
+                                     'topk_auc': topk_auc_result,
+                                     'time_consumption': time_consumption,
+                                     'inf_times': inf_time})
+
     topk_ablation_df.to_csv('feature_ablation.csv')

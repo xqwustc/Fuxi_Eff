@@ -108,7 +108,8 @@ if __name__ == '__main__':
     # for i in range(8, 12):
     # for i in range(29+incre - 1, df.shape[0] + incre - 1, incre):
     # for i in [37,38]*3:
-    for i in [9]:
+    for i in [3]:
+    # for i in [9]:
     # for i in [16]:
     # for i in [36]:
         i = min(i,df.shape[0] - 1)

@@ -107,9 +107,9 @@ if __name__ == '__main__':
     #     logging.info('****** Need save mvfs model ******')
     #     need_save_mvfs = True
 
-    incre = 1
-    # for i in range(29+incre-1, len(feature_map.features)+incre-1, incre):
-    for i in [32]*3:
+    # incre = 1
+    # for i in range(incre-1, len(feature_map.features)+incre-1, incre):
+    for i in [3,4,5]:
         i = min(i, len(feature_map.features) - 1)
         model_class = getattr(model_zoo, params['model'])
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
             AUCs.append(test_result['AUC'])
             logloss.append(test_result['logloss'])
             if need_save_mvfs:
-                model.save_mv_controller(i+1,params['dataset_id'])
+                model.save_mv_controller(i + 1, params['dataset_id'])
 
         del test_gen
         gc.collect()

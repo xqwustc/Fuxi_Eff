@@ -103,9 +103,11 @@ if __name__ == '__main__':
     AUCs = []
     logloss = []
     time_consumption = []
-    # incre = 10
-    # for i in range(0 + incre - 1, len(feature_map.features) + incre - 1, incre):
-    for i in [49,9,29]*3:
+    inf_time = []
+
+    incre = 1
+    for i in range(0 + incre - 1, len(feature_map.features) + incre - 1, incre):
+    # for i in [49,9,29]*3:
         i = min(i, len(feature_map.features) - 1)
         model_class = getattr(model_zoo, params['model'])
         print('params[model]', params['model'])
@@ -131,7 +133,10 @@ if __name__ == '__main__':
         test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
         test_result = {}
         if test_gen:
+            start_time = datetime.now()
             test_result = model.eval_mvfs(test_gen)
+            inf_time.append((datetime.now() - start_time).microseconds)
+
             AUCs.append(test_result['AUC'])
             logloss.append(test_result['logloss'])
         del test_gen
@@ -140,5 +145,6 @@ if __name__ == '__main__':
     topk_ablation_df = pd.DataFrame({'feature_num': select_nums,
                                      'topk_logloss': logloss,
                                      'topk_auc': AUCs,
-                                     'time_consumption': time_consumption})
+                                     'time_consumption': time_consumption,
+                                     'inf_time':inf_time})
     topk_ablation_df.to_csv('feature_ablation.csv')

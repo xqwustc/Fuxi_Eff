@@ -111,9 +111,10 @@ if __name__ == '__main__':
         # while cur_AUC < SOTA:
         # for i in range(9, df.shape[0],10):
 
-    incre = 1
-    for i in range(incre-1, df.shape[0]+incre-1, incre):
+    # incre = 1
+    # for i in range(incre-1, df.shape[0]+incre-1, incre):
     # for i in [7,8,9,10,11,12]:
+    for i in [9]*20:
         i = min(i, df.shape[0] - 1)
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]

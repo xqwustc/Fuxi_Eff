@@ -165,7 +165,7 @@ if __name__ == '__main__':
             if stop_while:
                 break
     else:
-        for i in [2,3,4,5,6,7,8,9]*5:
+        for i in [19,29,39,49,59,69,219]*3:
             i = min(i, df.shape[0] - 1)
             topk_params = copy.deepcopy(params)
             cur_features_rows = df.iloc[:i + 1, :]

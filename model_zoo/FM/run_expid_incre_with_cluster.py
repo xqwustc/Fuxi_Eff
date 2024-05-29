@@ -94,11 +94,16 @@ if __name__ == '__main__':
     topk_column_name = []
     topk_logloss_result = []
     topk_auc_result = []
+    time_consumption = []
+    inf_time = []
 
 
     # for i in range(df.shape[0]):
     # for i in range(df.shape[0]-1, 11, -1):
-    for i in range(11, 12):
+    # for i in range(3, 10):
+    # incre = 10
+    # for i in range(0 + incre - 1, len(feature_map.features) + incre - 1, incre):
+    for i in [19]*20:
         topk_params = copy.deepcopy(params)
         cur_features_rows = df.iloc[:i+1, :]
 
@@ -111,21 +116,28 @@ if __name__ == '__main__':
         topk_feature_map.load(feature_map_json, topk_params)
 
         # TODO: adaptively generate size_list
-        size_list = [10, 8, 4]
+        size_list = [10, 5, 2]
         # modify feature_map embedding_dim by cluster_list
         for idx,row in cluster_df.iterrows():
             cur_feat_name = row['feature_name']
             assert cur_feat_name in topk_feature_map.features.keys(), \
                 'feature_name {} not in topk_feature_map'.format(cur_feat_name)
             topk_feature_map.features[cur_feat_name]['embedding_dim'] = size_list[row['label']]
+            logging.info('--- Feature {} with size {}'.format(cur_feat_name, size_list[row['label']]))
 
         model_class = getattr(model_zoo, topk_params['model'])
         topk_model = model_class(topk_feature_map, **topk_params)
         topk_model.count_parameters()  # print number of parameters used in model
 
         train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
+        start_time = datetime.now()
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
-        valid_result = topk_model.evaluate(valid_gen)
+        time_consumption.append((datetime.now() - start_time).seconds)
+
+        test_gen = H5DataLoader(topk_feature_map, stage='test', **params).make_iterator()
+        start_time = datetime.now()
+        valid_result = topk_model.evaluate(test_gen)
+        inf_time.append((datetime.now() - start_time).microseconds)
 
         topk_column_name.append('topk_{}_with_{}'.format(i+1, topk_params['use_features']))
         topk_logloss_result.append(valid_result['logloss'])
@@ -137,5 +149,7 @@ if __name__ == '__main__':
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
-                                     'topk_auc': topk_auc_result})
+                                     'topk_auc': topk_auc_result,
+                                     'time_consumption': time_consumption,
+                                     'inf_time': inf_time})
     topk_ablation_df.to_csv('feature_ablation.csv')

@@ -95,16 +95,16 @@ if __name__ == '__main__':
     topk_logloss_result = []
     topk_auc_result = []
     time_consumption = []
-    #
+    inf_times = []
     # cur_AUC = 0
     # total_times = 0
     # SOTA = 0.79315
     # while cur_AUC < SOTA:
-    incre = 10
-    for i in range(incre-1, df.shape[0]+incre-1, incre):
+    # incre = 10
+    # for i in range(incre-1, df.shape[0]+incre-1, incre):
     # for i in range(8, 12):
     # for i in range(incre-1, df.shape[0]+incre-1, incre):
-    # for i in range(df.shape[0]):
+    for i in [23]*5:
         i = min(i, df.shape[0]-1)
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
@@ -124,7 +124,9 @@ if __name__ == '__main__':
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
         time_consumption.append((datetime.now() - start_time).seconds)
 
+        start_time = datetime.now()
         valid_result = topk_model.evaluate(test_gen)
+        inf_times.append((datetime.now() - start_time).seconds)
 
         topk_column_name.append('topk_{}_with_{}'.format(i + 1, topk_params['use_features']))
         topk_logloss_result.append(valid_result['logloss'])
@@ -138,5 +140,6 @@ if __name__ == '__main__':
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
                                      'topk_auc': topk_auc_result,
-                                     'time_consumption':time_consumption})
+                                     'time_consumption':time_consumption,
+                                     'inf_time':inf_times})
     topk_ablation_df.to_csv('feature_ablation.csv')

@@ -95,6 +95,7 @@ if __name__ == '__main__':
     topk_column_name = []
     topk_logloss_result = []
     topk_auc_result = []
+    topk_time_consumption = []
 
     incre = 1
     # for i in range(df.shape[0]):
@@ -106,7 +107,8 @@ if __name__ == '__main__':
     # for i in [139,df.shape[0]-1]:
     # for i in range(8, 12):
     # for i in range(29+incre - 1, df.shape[0] + incre - 1, incre):
-    for i in [36]*3:
+    SOTA = 0.9723
+    for i in [3,4]*200:
         i = min(i, df.shape[0] - 1)
         topk_params = copy.deepcopy(params)
         cur_features_rows = df.iloc[:i + 1, :]
@@ -137,7 +139,9 @@ if __name__ == '__main__':
         topk_model.count_parameters()  # print number of parameters used in model
 
         train_gen, valid_gen = H5DataLoader(topk_feature_map, stage='train', **topk_params).make_iterator()
+        cur_time = datetime.now()
         topk_model.fit(train_gen, validation_data=valid_gen, **params)
+        topk_time_consumption.append((datetime.now() - cur_time).seconds)
 
         test_gen = H5DataLoader(topk_feature_map, stage='test', **params).make_iterator()
         valid_result = topk_model.evaluate(test_gen)
@@ -150,7 +154,11 @@ if __name__ == '__main__':
         del train_gen, valid_gen
         gc.collect()
 
+        if valid_result['AUC'] >= SOTA:
+            break
+
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,
-                                     'topk_auc': topk_auc_result})
+                                     'topk_auc': topk_auc_result,
+                                     'time_consumption': topk_time_consumption})
     topk_ablation_df.to_csv('feature_ablation.csv')
