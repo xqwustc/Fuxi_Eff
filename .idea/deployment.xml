@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="root@121.4.138.132:21288 password" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="STEVEN8868@210.45.70.162:1722 password" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="502">
         <serverdata>
@@ -9,10 +9,24 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="STEVEN">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/suyu/FuxiCTR" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="STEVEN8868@210.45.70.162:1702 password">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1722 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/data/STEVEN8868/FuxiCTR" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
@@ -33,11 +47,11 @@
       <paths name="root@121.4.138.132:21288 password">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/Stev/proj/FuxiCTR" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/suyu/FuxiCTR" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="root@121.4.138.132:7002 password">
+      <paths name="root@121.4.138.132:21288 wubin">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
