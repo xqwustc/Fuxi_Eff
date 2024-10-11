@@ -12,7 +12,14 @@
       <paths name="STEVEN">
         <serverdata>
           <mappings>
-            <mapping deploy="/suyu/FuxiCTR" local="$PROJECT_DIR$" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1701 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
@@ -23,10 +30,45 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="STEVEN8868@210.45.70.162:1702 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1721 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="STEVEN8868@210.45.70.162:1722 password">
         <serverdata>
           <mappings>
             <mapping deploy="/data/STEVEN8868/FuxiCTR" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1722 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1722 password (3)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1722 password (4)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
@@ -44,14 +86,21 @@
           </mappings>
         </serverdata>
       </paths>
-      <paths name="root@121.4.138.132:21288 password">
+      <paths name="root@1.117.222.72:22 password (3)">
         <serverdata>
           <mappings>
-            <mapping deploy="/suyu/FuxiCTR" local="$PROJECT_DIR$" />
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="root@121.4.138.132:21288 wubin">
+      <paths name="root@119.45.13.17:6000 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@39.100.94.247:21288 password">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />

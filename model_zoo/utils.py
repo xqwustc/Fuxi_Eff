@@ -45,7 +45,7 @@ def cluster_features(features: pd.DataFrame, group_num=3):
     clustered_df = features.copy()
     # clustered_df['label'] = kmeans.labels_
 
-    kmedoids = KMedoids(n_clusters=3, metric='precomputed', random_state=0)
+    kmedoids = KMedoids(n_clusters=group_num, metric='precomputed', random_state=0)
     # 适配模型
     kmedoids.fit(distance_matrix)
     # 获取聚类标签

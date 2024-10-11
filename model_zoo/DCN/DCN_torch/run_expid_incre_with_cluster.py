@@ -57,6 +57,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='./config/', help='The config directory.')
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
+    parser.add_argument('--embed', type=str, default='gauss', help='The gpu index, -1 for cpu')
     args = vars(parser.parse_args())
 
     experiment_id = args['expid']
@@ -111,15 +112,17 @@ if __name__ == '__main__':
     choice = False
     if choice:
         stop_while = False
-        best_auc = 0.8860
+        best_auc = 1
         while not stop_while:
-            for i in [9,19]:
+            for i in [16]:
                 i = min(i, df.shape[0] - 1)
                 topk_params = copy.deepcopy(params)
                 cur_features_rows = df.iloc[:i + 1, :]
 
+                # TODO: adaptively generate size_list
+                size_list = [32, 16]
                 # feature_name and label(final label) of cluster_df will be used in FeatureMap
-                cluster_df = cluster_features(cur_features_rows)
+                cluster_df = cluster_features(cur_features_rows, group_num=len(size_list))
 
                 topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
                 logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
@@ -127,9 +130,7 @@ if __name__ == '__main__':
                 topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
                 topk_feature_map.load(feature_map_json, topk_params)
 
-                # TODO: adaptively generate size_list
-                size_list = [32, 16, 8]
-                # size_list = [32,32,32]
+
                 # modify feature_map embedding_dim by cluster_list
                 for idx, row in cluster_df.iterrows():
                     cur_feat_name = row['feature_name']
@@ -165,13 +166,17 @@ if __name__ == '__main__':
             if stop_while:
                 break
     else:
-        for i in [19,29,39,49,59,69,219]*3:
+        # for i in [19,29,39,49,59,69,219]*3:
+        for i in [16]*3:
             i = min(i, df.shape[0] - 1)
             topk_params = copy.deepcopy(params)
             cur_features_rows = df.iloc[:i + 1, :]
 
+            # TODO: adaptively generate size_list
+            # size_list = [32, 16]
+            size_list = [32, 16, 8]
             # feature_name and label(final label) of cluster_df will be used in FeatureMap
-            cluster_df = cluster_features(cur_features_rows)
+            cluster_df = cluster_features(cur_features_rows, group_num=len(size_list))
 
             topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
             logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
@@ -179,17 +184,43 @@ if __name__ == '__main__':
             topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
             topk_feature_map.load(feature_map_json, topk_params)
 
-            # TODO: adaptively generate size_list
-            size_list = [32, 16, 8]
-            # size_list = [32,32,32]
             # modify feature_map embedding_dim by cluster_list
-            for idx, row in cluster_df.iterrows():
-                cur_feat_name = row['feature_name']
-                assert cur_feat_name in topk_feature_map.features.keys(), \
-                    'feature_name {} not in topk_feature_map'.format(cur_feat_name)
-                topk_feature_map.features[cur_feat_name]['embedding_dim'] = size_list[row['label']]
-                # Output the size of each feature
-                logging.info('--- Feature {} with size {}'.format(cur_feat_name, size_list[row['label']]))
+            if args['embed'] == 'random':
+                # random from 0 to len(size_list)-1
+                for idx, row in cluster_df.iterrows():
+                    ran_index = np.random.randint(0, len(size_list))
+                    cur_feat_name = row['feature_name']
+                    assert cur_feat_name in topk_feature_map.features.keys(), \
+                        'feature_name {} not in topk_feature_map'.format(cur_feat_name)
+                    topk_feature_map.features[cur_feat_name]['embedding_dim'] = size_list[ran_index]
+                    # Output the size of each feature
+                    logging.info('--- Feature {} with size {}'.format(cur_feat_name, size_list[ran_index]))
+
+            if args['embed'] == 'gauss':
+                logging.info('CLUSTERING WITH GAUSSIAN PROCESS')
+                for idx, row in cluster_df.iterrows():
+                    cur_feat_name = row['feature_name']
+                    assert cur_feat_name in topk_feature_map.features.keys(), \
+                        'feature_name {} not in topk_feature_map'.format(cur_feat_name)
+                    topk_feature_map.features[cur_feat_name]['embedding_dim'] = size_list[row['label']]
+                    # Output the size of each feature
+                    logging.info('--- Feature {} with size {}'.format(cur_feat_name, size_list[row['label']]))
+
+            if args['embed'] == 'unigroup':
+                size = i // len(size_list)
+                # 定义每组的索引范围
+                for idx, row in cluster_df.iterrows():
+                    cur_feat_name = row['feature_name']
+                    assert cur_feat_name in topk_feature_map.features.keys(), \
+                        'feature_name {} not in topk_feature_map'.format(cur_feat_name)
+
+                    cur_size_idx = min(len(size_list) - 1, (i - idx) // size)
+                    topk_feature_map.features[cur_feat_name]['embedding_dim'] = \
+                        size_list[len(size_list) - 1 - cur_size_idx]
+                    # Output the size of each feature
+                    logging.info('--- Feature {} with size {}'.format(cur_feat_name,
+                                                                      topk_feature_map.features
+                                                                      [cur_feat_name]['embedding_dim']))
 
             model_class = getattr(model_zoo, topk_params['model'])
             topk_model = model_class(topk_feature_map, **topk_params)
