@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
     parser.add_argument('--cp', type=str, help='checkpoint path')
-    parser.add_argument('--epoch_pre', type=int, default=2, nargs='+', help='pretrain/main_train epochs')
+    parser.add_argument('--epoch_pre', type=int, default=1, nargs='+', help='pretrain/main_train epochs')
     args = vars(parser.parse_args())
 
     experiment_id = args['expid']
@@ -84,19 +84,21 @@ if __name__ == '__main__':
     feature_map = FeatureMap(params['dataset_id'], data_dir)
     feature_map.load(feature_map_json, params)
 
-    logging.info('****** Warmup network without controller ******')
+    need_pretrain = False
     warmup_path = f"{params['model']}_{params['dataset_id']}_warmup4mv.pth"
-    model_class = getattr(model_zoo, params['model'])
-    model = model_class(feature_map, **params)
-    model.count_parameters()
-    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-    params_pretrain = copy.deepcopy(params)
-    params_pretrain['epochs'] = args['epoch_pre']
-    model.fit(train_gen, validation_data=valid_gen, **params_pretrain)
-    torch.save(model.state_dict(), warmup_path)
-    logging.info('****** Warmup end and save model in {} ******'.format(warmup_path))
-    del train_gen, valid_gen
-    gc.collect()
+    if need_pretrain:
+        logging.info('****** Warmup network without controller ******')
+        model_class = getattr(model_zoo, params['model'])
+        model = model_class(feature_map, **params)
+        model.count_parameters()
+        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+        params_pretrain = copy.deepcopy(params)
+        params_pretrain['epochs'] = args['epoch_pre']
+        model.fit(train_gen, validation_data=valid_gen, **params_pretrain)
+        torch.save(model.state_dict(), warmup_path)
+        logging.info('****** Warmup end and save model in {} ******'.format(warmup_path))
+        del train_gen, valid_gen
+        gc.collect()
 
     select_nums = []
     AUCs = []
@@ -105,8 +107,8 @@ if __name__ == '__main__':
     # for i in range(0, len(feature_map.features)):
     # for i in [6,6,6]:
     incre = 1
-    for i in range(incre - 1, len(feature_map.features) + incre - 1, incre):
-    # for i in [2,3,4]:
+    # for i in range(incre - 1, len(feature_map.features) + incre - 1, incre):
+    for i in [5,6,7,8,9,10]:
     # for i in range(29+incre - 1, len(feature_map.features) + incre - 1, incre):
     # for i in [244,229,19,29,39,239]:
     # for i in [19,29,39,109,119,129,139,149,159,169,179,189,199,209,219,229,239,244]:
@@ -115,6 +117,7 @@ if __name__ == '__main__':
         print('params[model]', params['model'])
         model = model_class(feature_map, select_num=i + 1, **params)
         model.load_state_dict(torch.load(warmup_path), strict=False)
+        logging.info('--- Loaded warmup model from {} ---'.format(warmup_path))
         select_nums.append(i + 1)
         model.count_parameters()  # print number of parameters used in model
         logging.info('Used Feature Number:{} '.format(i + 1))
