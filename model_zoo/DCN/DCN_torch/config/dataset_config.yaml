@@ -119,3 +119,38 @@ kkbox_x1:
     train_data: ../../../data/KKBox_x1/train.csv
     valid_data: ../../../data/KKBox_x1/valid.csv
     spe_processor: kkbox
+
+aliccp_x1:
+    data_format: csv
+    data_root: ../../../data/
+    feature_cols:
+#        - { name: [ 101, 121, 122, 124, 125, 126, 127, 128, 129, 205, 206, 207, 210, 216, 508, 509, 702, 853, 301, '109_14', '110_14', '127_14', '150_14'],
+#            active: true, dtype: str, type: categorical, fill_na: "" }
+        - { name: [ '101', '121', '122', '124', '125', '126', '127', '128', '129', '205', '206', '207', '210', '216', '508', '509', '702', '853', '301', '109_14', '110_14', '127_14', '150_14' ],
+            active: true, dtype: str, type: categorical, fill_na: "" }
+    label_col: { dtype: float, name: click }
+    min_categr_count: 1
+    test_data: ../../../data/AliCCP_x1/ali_ccp_test.csv
+    train_data: ../../../data/AliCCP_x1/ali_ccp_train.csv
+    valid_data: ../../../data/AliCCP_x1/ali_ccp_val.csv
+
+
+#avazu_x4_3bbbc4c9:
+#    data_format: csv
+#    data_root: ../../../data/
+#    feature_cols:
+#    - {active: false, dtype: str, name: id, type: categorical}
+#    - {active: true, dtype: str, name: hour, preprocess: convert_hour, type: categorical}
+#    -   active: true
+#        dtype: str
+#        name: [C1, banner_pos, site_id, site_domain, site_category, app_id, app_domain,
+#            app_category, device_id, device_ip, device_model, device_type, device_conn_type,
+#            C14, C15, C16, C17, C18, C19, C20, C21]
+#        type: categorical
+#    - {active: true, dtype: str, name: weekday, preprocess: convert_weekday, type: categorical}
+#    - {active: true, dtype: str, name: weekend, preprocess: convert_weekend, type: categorical}
+#    label_col: {dtype: float, name: click}
+#    min_categr_count: 2
+#    test_data: ../../../data/avazu_x4/test.csv
+#    train_data: ../../../data/avazu_x4/train.csv
+#    valid_data: ../../../data/avazu_x4/valid.csv
