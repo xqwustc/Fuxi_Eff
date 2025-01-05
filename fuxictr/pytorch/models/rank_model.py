@@ -24,6 +24,7 @@ from fuxictr.metrics import evaluate_metrics
 from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get_regularizer
 from fuxictr.utils import Monitor
 from tqdm import tqdm
+import pandas as pd
 
 
 class BaseModel(nn.Module):
@@ -280,3 +281,37 @@ class BaseModel(nn.Module):
                 total_params += param.numel()
         logging.info("Total number of parameters: {}.".format(total_params))
 
+    def save_scores(self, score_df, score_name="feature_score"):
+        base_name = os.path.join(os.path.dirname(self.checkpoint), score_name)
+        filename = f"{base_name}.csv"
+        i = 1
+        while os.path.exists(filename):
+            filename = f"{base_name}_{i}.csv"
+            i += 1
+
+        score_df.to_csv(filename, index=False)
+        logging.info(f"Feature scores saved to {filename}.")
+
+    def read_scores(self, score_name="feature_score", score_version = "", ratio = 1):
+        base_name = os.path.join(os.path.dirname(self.checkpoint), score_name)
+
+        if score_version != "":
+            score_version = f"_{score_version}"
+
+        filename = f"{base_name}{score_version}.csv"
+        if not os.path.exists(filename):
+            logging.info(f"Feature scores not found: {filename}.")
+            return None
+        else:
+            # 计算需要读取的行数
+            total_lines = sum(1 for _ in open(filename))  # 获取文件的总行数
+            top_n = int(total_lines * ratio)  # 计算需要读取的行数
+
+            # 读取文件的前top-ratio部分并仅加载特定列
+            columns_to_read = ['feature_name', 'index']
+            score_df = pd.read_csv(filename, usecols=columns_to_read, nrows=top_n)
+
+            logging.info(f"Feature scores loaded from {filename} with ratio {ratio}.")
+
+            kept_features = score_df.groupby('feature_name')['index'].apply(lambda x: sorted(x[x != 0])).to_dict()
+            return kept_features

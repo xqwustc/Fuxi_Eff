@@ -33,6 +33,7 @@ from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
 from fuxictr.pytorch.layers import MaskedFeatureEmbedding
+import os
 
 EPS = 1e-6
 lamda_opt = 2e-9
@@ -59,18 +60,34 @@ class DCN(BaseModel):
                                   net_regularizer=net_regularizer,
                                   **kwargs)
         # self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
         if kwargs.get('optfs',0) == 1:
+            # OptFS condition
             if kwargs['dataset_id'] == 'avazu_x4':
                 temp = 5000
             else:
                 temp = 1000
             print('Using OptFS Embedding Layer with temp = ',temp)
             self.embedding_layer = MaskedFeatureEmbedding(feature_map, embedding_dim,temp = temp)
+        elif kwargs.get('autofeat_mode') == "retrain":
+            # AutoFeat condition, will pass kept_features to embedding layer
+            ratio = kwargs.get('keep_ratio', 1)
+            kept_features = self.read_scores(score_version = kwargs.get("score_version", ""), ratio = ratio)
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features = kept_features)
+        elif kwargs.get('autofeat_mode') in ['batch','table']:
+            self.score_mode = kwargs.get('score_mode', 'sum')
+            logging.info(f"Score mode: {self.score_mode}")
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim ,autofeat_mode = kwargs['autofeat_mode'],
+                                                    baseline = kwargs.get('baseline'))
         else:
+            # Normal condition
             self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
 
         self.interpolate_n = 5
         self.mcdropout_n = int(net_dropout * 100)
+
+        if kwargs.get('autofeat_mode', None) is not None:
+            self.autofeat_mode = kwargs['autofeat_mode']
 
         input_dim = feature_map.sum_emb_out_dim()
         self.dnn = MLP_Block(input_dim=input_dim,
@@ -101,6 +118,9 @@ class DCN(BaseModel):
         # self.gates_theta = nn.Parameter(torch.ones(len(self.feature_map.features)) * 0.5)
         # self.gates_theta.requires_grad_(requires_grad=True)
         # # --- update for droprank end---
+
+
+
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
 
@@ -190,6 +210,73 @@ class DCN(BaseModel):
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
+
+    def forward_with_autofeat(self, inputs, cur_interp):
+        # the interpolation is done for embedding table NOT for the feature field!!!
+        X = self.get_inputs(inputs)
+        feature_emb, delta_v_dict, interp_layer = self.embedding_layer(X, flatten_emb=True, autofeat_mode=self.autofeat_mode,
+                                                interp=self.interpolate_n, current_interp=cur_interp)
+
+        cross_out = self.crossnet(feature_emb)
+        if self.dnn is not None:
+            dnn_out = self.dnn(feature_emb)
+            final_out = torch.cat([cross_out, dnn_out], dim=-1)
+        else:
+            final_out = cross_out
+        y_pred = self.fc(final_out)
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict, delta_v_dict, interp_layer
+
+    def evaluate_with_autofeat(self, data_generator):
+        data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+        feature_score_dict = dict() # key is feature name and v is the score tensor for each feature
+        for batch_data in data_generator:
+            for cur_interp in range(1, self.interpolate_n + 1):
+                return_dict, delta_v, interp_layer = self.forward_with_autofeat(batch_data, cur_interp)
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                loss.backward(retain_graph=False)
+
+                for feature_name, embed_table in interp_layer.embedding_layer.embedding_layers.items():
+                    if self.score_mode == 'sum':
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).sum(dim = -1)
+                    elif self.score_mode == 'abs':
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).abs().sum(dim = -1)
+                    if feature_name in feature_score_dict:
+                        feature_score_dict[feature_name] += feature_attr.detach().cpu().numpy()
+                    else:
+                        feature_score_dict[feature_name] = feature_attr.detach().cpu().numpy()
+
+                self.optimizer.zero_grad()
+
+                torch.cuda.empty_cache()
+
+        feature_name_list, index_list, score_list = [], [], []
+        # 遍历 feature_score_dict
+        for feature_name, score in feature_score_dict.items():
+            # 获取当前特征的索引和值
+            indices = np.arange(len(score))  # 索引
+            scores = score
+            # 将 feature_name 和 scores 进行批量拼接
+            feature_name_list.extend([feature_name] * len(score))  # 重复 feature_name
+            index_list.extend(indices)  # 添加索引
+            score_list.extend(scores)  # 添加分数
+
+        # Combine to DataFrame
+        feature_score = pd.DataFrame({
+            'feature_name': feature_name_list,
+            'index': index_list,
+            'score': score_list
+        })
+
+        # 按照 score 降序排序
+        feature_score_sorted = feature_score.sort_values(by='score', ascending=False)
+
+        self.save_scores(feature_score_sorted)
+        return
+
+
 
     def forward_with_dr(self, inputs, gates_prob):
         X = self.get_inputs(inputs)

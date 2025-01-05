@@ -54,7 +54,7 @@ if __name__ == '__main__':
     params['gpu'] = args['gpu']
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
-    # seed_everything(seed=params['seed'])
+    seed_everything(seed=params['seed'])
 
     if params.get('spe_processor'):
         module_name = f"fuxictr.datasets.{params['spe_processor']}"

@@ -63,7 +63,6 @@ if __name__ == '__main__':
     params['gpu'] = args['gpu']
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
-    # seed_everything(seed=params['seed'])
 
     # email.common_send('WD_droprank_incre.py',params["data_format"])
 
@@ -126,13 +125,15 @@ if __name__ == '__main__':
     # SOTA = 0.79295
 
     incre = 1
-    for i in range(incre-1, df.shape[0]+incre-1, incre):
+    # for i in range(incre-1, df.shape[0]+incre-1, incre):
 
-    # for i in [159]*3:
+    for i in [9]:
     # for i in [29]*3:
     # for i in [7]*5:
     # for i in range(3, df.shape[0], 1):
+        seed_everything(seed=params['seed'])
         i = min(i, df.shape[0] - 1)
+        print('Now Current Feature Number:', i+1)
     # while cur_AUC < SOTA:
     #     for i in range(8, 13):
         topk_params = copy.deepcopy(params)
@@ -167,6 +168,9 @@ if __name__ == '__main__':
         # email.common_send('DCN_incre.py - {} Features'.format(i+1), str(topk_params['use_features']) + ' - ' + str(valid_result['logloss']) + ' - ' + str(valid_result['AUC']))
         del train_gen, valid_gen, test_gen
         gc.collect()
+
+        # if cur_AUC >= 0.79307 and valid_result['logloss'] < 0.37204:
+        #     break
 
         # if cur_AUC >= SOTA:
         #     break
