@@ -124,6 +124,11 @@ class BaseModel(nn.Module):
 
     def model_to_device(self):
         self.to(device=self.device)
+        if hasattr(self,'autofeat_mode') and self.autofeat_mode == 'retrain':
+            logging.info("Move map dict to device {}".format(self.device))
+            for k,v in self.embedding_layer.embedding_layer.vocab_ind_map.items():
+                self.embedding_layer.embedding_layer.vocab_ind_map[k] = v.to(self.device)
+
 
     def lr_decay(self, factor=0.1, min_lr=1e-6):
         for param_group in self.optimizer.param_groups:
@@ -300,18 +305,35 @@ class BaseModel(nn.Module):
 
         filename = f"{base_name}{score_version}.csv"
         if not os.path.exists(filename):
-            logging.info(f"Feature scores not found: {filename}.")
-            return None
+            logging.warning(f"Feature scores not found: {filename}.")
+            raise FileNotFoundError(f"Feature scores not found: {filename}.")
         else:
             # 计算需要读取的行数
             total_lines = sum(1 for _ in open(filename))  # 获取文件的总行数
             top_n = int(total_lines * ratio)  # 计算需要读取的行数
 
-            # 读取文件的前top-ratio部分并仅加载特定列
-            columns_to_read = ['feature_name', 'index']
-            score_df = pd.read_csv(filename, usecols=columns_to_read, nrows=top_n)
+            mode = 'all_top'
+            if mode == 'all_top':
+                # 读取文件的前top-ratio部分并仅加载特定列
+                columns_to_read = ['feature_name', 'index']
+                score_df = pd.read_csv(filename, usecols=columns_to_read,dtype={'feature_name': 'str'},  nrows=top_n)
 
-            logging.info(f"Feature scores loaded from {filename} with ratio {ratio}.")
+                logging.info(f"Feature scores loaded from {filename} with ratio {ratio}.")
 
-            kept_features = score_df.groupby('feature_name')['index'].apply(lambda x: sorted(x[x != 0])).to_dict()
-            return kept_features
+                kept_features = score_df.groupby('feature_name')['index'].apply(lambda x: sorted(x[x != 0])).to_dict()
+                return kept_features
+            elif mode == 'each_top':
+                columns_to_read = ['feature_name', 'index']
+                score_df = pd.read_csv(filename, usecols=columns_to_read, dtype={'feature_name': 'str'})
+
+                logging.info(f"Feature scores loaded from {filename} with ratio {ratio}.")
+
+                # Aggregate according to the original feature order, then select the top-ratio features for each feature
+                kept_features = {}
+                for feature_name, group in score_df.groupby('feature_name'):
+                    top_n = int(len(group) * ratio)
+                    kept_features[feature_name] = sorted(group['index'][group['index'] != 0].values[:top_n])
+
+                return kept_features
+            else:
+                raise ValueError(f"Unsupported mode: {mode}")

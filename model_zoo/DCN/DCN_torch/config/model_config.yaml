@@ -462,7 +462,7 @@ DCN_feat_frappe:
     monitor: { 'AUC': 1, 'logloss': -1 }
     monitor_mode: 'max'
     autofeat_mode: 'table'
-    score_mode: 'abs'
+    score_mode: 'sum_abs'
     baseline: 'mean'
     need_pretrain: False
 
@@ -490,9 +490,8 @@ DCN_feat_retrain_frappe:
     monitor_mode: 'max'
     autofeat_mode: 'retrain'
     need_pretrain: True
-    keep_ratio: 0.5
+    keep_ratio: 1
     score_version: 12
-    score_mode: 'sum'
 
 
 DCN_feat_avazu:
@@ -519,6 +518,8 @@ DCN_feat_avazu:
     monitor_mode: 'max'
     autofeat_mode: 'table'
     need_pretrain: False
+    score_mode: 'abs'
+    baseline: 'zero'
 
 DCN_feat_retrain_avazu:
     model: DCN
@@ -544,7 +545,116 @@ DCN_feat_retrain_avazu:
     monitor_mode: 'max'
     autofeat_mode: 'retrain'
     need_pretrain: True
-    keep_ratio: 0.85
+    keep_ratio: 0.1
+    score_version: 1
+
+DCN_feat_criteo:
+    model: DCN
+    dataset_id: criteo_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    autofeat_mode: 'table'
+    need_pretrain: False
+    score_mode: 'abs'
+    baseline: 'mean'
+
+DCN_feat_retrain_criteo:
+    model: DCN
+    dataset_id: criteo_x4
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    autofeat_mode: 'retrain'
+    need_pretrain: True
+    keep_ratio: 0.8
+    score_version: 1
+
+DCN_feat_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    autofeat_mode: 'table'
+    need_pretrain: False
+    score_mode: 'abs'
+    baseline: 'mean'
+
+DCN_feat_retrain_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    autofeat_mode: 'retrain'
+    need_pretrain: True
+    keep_ratio: 0.4
+    score_version: ""
 
 DCN_movielens:
     model: DCN

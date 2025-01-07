@@ -24,6 +24,7 @@ import numpy as np
 from collections import OrderedDict
 from fuxictr.pytorch.torch_utils import get_initializer
 from fuxictr.pytorch import layers
+import bisect
 
 
 class FeatureEmbedding(nn.Module):
@@ -122,6 +123,8 @@ class FeatureEmbeddingDict(nn.Module):
         self.embedding_layers = nn.ModuleDict()
         self.feature_encoders = nn.ModuleDict()
         self.kept_features = kept_features
+
+        vocab_ind_map = dict()
         for feature, feature_spec in self._feature_map.features.items():
             if self.is_required(feature):
                 if not (use_pretrain and use_sharing) and embedding_dim == 1:
@@ -146,6 +149,7 @@ class FeatureEmbeddingDict(nn.Module):
                 elif feature_spec["type"] == "categorical":
                     padding_idx = feature_spec.get("padding_idx", None)
                     vocab_size = feature_spec["vocab_size"]
+                    pre_vocab_size = vocab_size
                     if kept_features is not None:
                         if feature not in kept_features:
                             # All features have been pruned
@@ -159,9 +163,31 @@ class FeatureEmbeddingDict(nn.Module):
                                 vocab_size = len(kept_features[feature]) + 2
                         self._feature_map.features[feature]['oov_idx'] = vocab_size - 1
 
+                    if kept_features is not None:
+                        cur_map = torch.full((pre_vocab_size,), vocab_size - 1, dtype=torch.long)
+                        if feature in kept_features:
+                            kept_list = kept_features[feature]
+                            kept_set = set(kept_features[feature])
+                            for i in range(pre_vocab_size):
+                                if i in kept_set:  # 使用集合快速判断
+                                    # 使用bisect_left寻找i的插入位置，如果i在列表中，返回插入位置
+                                    idx = bisect.bisect_left(kept_list, i)
+                                    if idx < len(kept_list) and kept_list[idx] == i:  # 确保i确实在kept_list中
+                                        cur_map[i] = idx + 1
+                        else:
+                            # All features are pruned
+                            cur_map = torch.tensor([
+                                vocab_size - 1 for i in range(pre_vocab_size)
+                            ])
+
+                        cur_map[padding_idx] = 0 # padding_idx is 0
+                        vocab_ind_map[feature] = cur_map
+                        logging.info(f"[Prune-Embed] Construct re-map for {feature} done.")
+
                     embedding_matrix = nn.Embedding(vocab_size,
-                                                    feat_emb_dim, 
+                                                    feat_emb_dim,
                                                     padding_idx=padding_idx)
+
                     if use_pretrain and "pretrained_emb" in feature_spec:
                         embedding_matrix = self.load_pretrained_embedding(embedding_matrix,
                                                                           feature_map, 
@@ -181,6 +207,7 @@ class FeatureEmbeddingDict(nn.Module):
                                                                           freeze=feature_spec["freeze_emb"],
                                                                           padding_idx=padding_idx)
                     self.embedding_layers[feature] = embedding_matrix
+        self.vocab_ind_map = vocab_ind_map
         self.reset_parameters()
 
     def get_feature_encoder(self, encoder):
@@ -293,20 +320,25 @@ class FeatureEmbeddingDict(nn.Module):
                     inp = inputs[feature].long()
 
                     if self.kept_features is not None:
-                        oov_idx = feature_spec['oov_idx']
-                        if feature not in self.kept_features:
-                            # All features have been pruned, use oov_idx
-                            inp = torch.full_like(inp, oov_idx)
+                        # When it exists, it means that the feature has been pruned
+                        flag = 2
+                        if flag == 1:
+                                oov_idx = feature_spec['oov_idx']
+                                if feature not in self.kept_features:
+                                    # All features have been pruned, use oov_idx
+                                    inp = torch.full_like(inp, oov_idx)
+                                else:
+                                    # Get new index after pruning
+                                    kept_features_tensor = torch.tensor(self.kept_features[feature], device=inp.device, dtype=inp.dtype)
+                                    positions = torch.searchsorted(kept_features_tensor, inp)
+                                    positions = positions.clamp(max=len(kept_features_tensor) - 1)
+                                    valid_mask = (kept_features_tensor[positions] == inp)
+                                    inp = torch.where(valid_mask, positions + 1, oov_idx)
+                                    # assert (inp == inp_pre).sum() == len(inp_pre), f"Pruning error: {inp} vs {inp_pre}"
+                        elif flag == 2:
+                            inp = self.vocab_ind_map[feature][inp.flatten()].view(inp.size())
                         else:
-                            # Get new index after pruning
-                            inp_pre = copy.deepcopy(inp)
-                            kept_features_tensor = torch.tensor(self.kept_features[feature], device=inp.device, dtype=inp.dtype)
-                            positions = torch.searchsorted(kept_features_tensor, inp)
-                            positions = positions.clamp(max=len(kept_features_tensor) - 1)
-                            valid_mask = (kept_features_tensor[positions] == inp)
-                            inp = torch.where(valid_mask, positions + 1, oov_idx)
-
-                            # assert (inp == inp_pre).sum() == len(inp_pre), f"Pruning error: {inp} vs {inp_pre}"
+                            raise NotImplementedError
 
                     embeddings = self.embedding_layers[feature](inp)
                 elif feature_spec["type"] == "sequence":

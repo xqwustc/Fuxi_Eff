@@ -42,6 +42,7 @@ class DeepFM(BaseModel):
                  batch_norm=False, 
                  embedding_regularizer=None, 
                  net_regularizer=None,
+                 select_num=0,
                  **kwargs):
         super(DeepFM, self).__init__(feature_map, 
                                      model_id=model_id, 
@@ -49,8 +50,32 @@ class DeepFM(BaseModel):
                                      embedding_regularizer=embedding_regularizer, 
                                      net_regularizer=net_regularizer,
                                      **kwargs)
-        self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
-        self.fm = FactorizationMachine(feature_map)
+
+        if kwargs.get('autofeat_mode') == "retrain":
+            # AutoFeat condition, will pass kept_features to embedding layer
+            ratio = kwargs.get('keep_ratio', 1)
+            kept_features = self.read_scores(score_version = kwargs.get("score_version", ""), ratio = ratio)
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features = kept_features)
+
+            kwargs['kept_features'] = kept_features # for fm-LR
+            kwargs['device'] = self.device
+        elif kwargs.get('autofeat_mode') in ['batch','table']:
+            self.score_mode = kwargs.get('score_mode', 'sum')
+            logging.info(f"Score mode: {self.score_mode}")
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim ,autofeat_mode = kwargs['autofeat_mode'],
+                                                    baseline = kwargs.get('baseline'))
+        else:
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
+        if kwargs.get('autofeat_mode') != None:
+            self.autofeat_mode = kwargs['autofeat_mode']
+            if self.autofeat_mode != 'retrain':
+                # cal the score, use the share embedding for
+                kwargs['emb_layer'] = self.embedding_layer
+                self.share_embedding_layer = True
+                self.interpolate_n = 5
+
+        self.fm = FactorizationMachine(feature_map,**kwargs)
         self.mlp = MLP_Block(input_dim=feature_map.sum_emb_out_dim(),
                              output_dim=1, 
                              hidden_units=hidden_units,
@@ -64,32 +89,41 @@ class DeepFM(BaseModel):
         # self.gates_theta = torch.ones(len(self.feature_map.features)) * 0.5
         # self.gates_theta.requires_grad_(requires_grad=True)
         # # --- update for droprank end---
-
+        if select_num > 0:
+            self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
+                                                 embed_dims=len(self.feature_map.features), num_selections=select_num)
         # # --- update for AdaFS start---
-        self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
+        # self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
         # # --- update for AdaFS end---
 
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()
-            
+
     def forward(self, inputs):
         """
         Inputs: [X,y]
         """
-        X = self.get_inputs(inputs)
-        embed_res = self.embedding_layer(X)  # like(size,features,emb_size), the embedding info got
-        if isinstance(embed_res, tuple):
-            feature_emb_stack, feature_emb_cat = embed_res
-        else:
-            feature_emb_stack = embed_res
-            feature_emb_cat = feature_emb_stack.flatten(start_dim=1)
+        if self.autofeat_mode == 'retrain':
+            # Normal forward
+            X = self.get_inputs(inputs)
+            embed_res = self.embedding_layer(X)  # like(size,features,emb_size), the embedding info got
+            if isinstance(embed_res, tuple):
+                feature_emb_stack, feature_emb_cat = embed_res
+            else:
+                feature_emb_stack = embed_res
+                feature_emb_cat = feature_emb_stack.flatten(start_dim=1)
 
-        y_pred = self.fm(X, feature_emb_stack)
-        y_pred += self.mlp(feature_emb_cat)
-        y_pred = self.output_activation(y_pred)
-        return_dict = {"y_pred": y_pred}
-        return return_dict
+            y_pred = self.fm(X, feature_emb_stack)
+            y_pred += self.mlp(feature_emb_cat)
+            y_pred = self.output_activation(y_pred)
+            return_dict = {"y_pred": y_pred}
+            return return_dict
+        elif self.autofeat_mode in ['batch','table']:
+            # When using AutoFeat to get scores, the forward will be different
+            return  self.forward_with_autofeat(inputs)
+        else:
+            raise NotImplementedError
 
     def forward_with_dr(self,inputs,gates_prob):
         X = self.get_inputs(inputs)
@@ -105,6 +139,93 @@ class DeepFM(BaseModel):
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
+
+    def forward_with_autofeat(self, inputs, cur_interp = None):
+        # the interpolation is done for embedding table NOT for the feature field!!!
+        X = self.get_inputs(inputs)
+        if cur_interp is not None:
+            embed_res, delta_v_dict, interp_layer = self.embedding_layer(X, autofeat_mode=self.autofeat_mode,
+                                                    interp=self.interpolate_n, current_interp=cur_interp)
+
+            if isinstance(embed_res, tuple):
+                feature_emb_stack, feature_emb_cat = embed_res
+            else:
+                feature_emb_stack = embed_res
+                feature_emb_cat = feature_emb_stack.flatten(start_dim=1)
+
+            y_pred = self.fm.forward_intp(feature_emb_stack)
+            y_pred += self.mlp(feature_emb_cat)
+            y_pred = self.output_activation(y_pred)
+            return_dict = {"y_pred": y_pred}
+            return return_dict, delta_v_dict, interp_layer
+        else:
+            embed_res = self.embedding_layer(X)
+
+            if isinstance(embed_res, tuple):
+                feature_emb_stack, feature_emb_cat = embed_res
+            else:
+                feature_emb_stack = embed_res
+                feature_emb_cat = feature_emb_stack.flatten(start_dim=1)
+
+            y_pred = self.fm.forward_intp(feature_emb_stack)
+            y_pred += self.mlp(feature_emb_cat)
+            y_pred = self.output_activation(y_pred)
+            return_dict = {"y_pred": y_pred}
+            return return_dict
+
+    def evaluate_with_autofeat(self, data_generator):
+        data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+        feature_score_dict = dict() # key is feature name and v is the score tensor for each feature
+        for batch_data in data_generator:
+            for cur_interp in range(1, self.interpolate_n + 1):
+                return_dict, delta_v, interp_layer = self.forward_with_autofeat(batch_data, cur_interp)
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                loss.backward(retain_graph=False)
+
+                for feature_name, embed_table in interp_layer.embedding_layer.embedding_layers.items():
+                    if self.score_mode in ['sum', 'sum_abs']:
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).sum(dim = -1)
+                    elif self.score_mode == 'abs':
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).abs().sum(dim = -1)
+                    else:
+                        raise NotImplementedError
+
+                    if feature_name in feature_score_dict:
+                        feature_score_dict[feature_name] += feature_attr.detach().cpu().numpy()
+                    else:
+                        feature_score_dict[feature_name] = feature_attr.detach().cpu().numpy()
+
+                self.optimizer.zero_grad()
+
+                torch.cuda.empty_cache()
+
+        feature_name_list, index_list, score_list = [], [], []
+        # 遍历 feature_score_dict
+        for feature_name, score in feature_score_dict.items():
+            # 获取当前特征的索引和值
+            indices = np.arange(len(score))  # 索引
+            if self.score_mode == 'sum_abs':
+                scores = np.abs(score)
+            else:
+                scores = score
+            # 将 feature_name 和 scores 进行批量拼接
+            feature_name_list.extend([feature_name] * len(score))  # 重复 feature_name
+            index_list.extend(indices)  # 添加索引
+            score_list.extend(scores)  # 添加分数
+
+        # Combine to DataFrame
+        feature_score = pd.DataFrame({
+            'feature_name': feature_name_list,
+            'index': index_list,
+            'score': score_list
+        })
+
+        # 按照 score 降序排序
+        feature_score_sorted = feature_score.sort_values(by='score', ascending=False)
+
+        self.save_scores(feature_score_sorted)
+        return
 
     def forward_with_adafs(self,inputs):
         X = self.get_inputs(inputs)

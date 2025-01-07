@@ -22,10 +22,10 @@ from ..interactions import InnerProductInteraction
 
 
 class FactorizationMachine(nn.Module):
-    def __init__(self, feature_map):
+    def __init__(self, feature_map,**kwargs):
         super(FactorizationMachine, self).__init__()
         self.fm_layer = InnerProductInteraction(feature_map.num_fields, output="product_sum")
-        self.lr_layer = LogisticRegression(feature_map, use_bias=True)
+        self.lr_layer = LogisticRegression(feature_map, use_bias=True, embedding_layer=kwargs.get('emb_layer'), **kwargs)
 
     def forward(self, X, feature_emb):
         lr_out = self.lr_layer(X)
@@ -33,3 +33,14 @@ class FactorizationMachine(nn.Module):
         output = fm_out + lr_out
         return output
 
+    def forward_intp(self,feature_emb):
+        # use in select phase
+        # lr phase
+        output = torch.mean(feature_emb,dim = 2,keepdim=True)
+        output = output.sum(dim=1)
+        if self.lr_layer.bias is not None:
+            output += self.lr_layer.bias
+
+        # fm phase
+        output += self.fm_layer(feature_emb)
+        return output

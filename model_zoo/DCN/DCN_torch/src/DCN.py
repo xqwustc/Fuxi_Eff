@@ -239,10 +239,13 @@ class DCN(BaseModel):
                 loss.backward(retain_graph=False)
 
                 for feature_name, embed_table in interp_layer.embedding_layer.embedding_layers.items():
-                    if self.score_mode == 'sum':
+                    if self.score_mode in ['sum', 'sum_abs']:
                         feature_attr = (embed_table.weight.grad * delta_v[feature_name]).sum(dim = -1)
                     elif self.score_mode == 'abs':
                         feature_attr = (embed_table.weight.grad * delta_v[feature_name]).abs().sum(dim = -1)
+                    else:
+                        raise NotImplementedError
+
                     if feature_name in feature_score_dict:
                         feature_score_dict[feature_name] += feature_attr.detach().cpu().numpy()
                     else:
@@ -257,7 +260,10 @@ class DCN(BaseModel):
         for feature_name, score in feature_score_dict.items():
             # 获取当前特征的索引和值
             indices = np.arange(len(score))  # 索引
-            scores = score
+            if self.score_mode == 'sum_abs':
+                scores = np.abs(score)
+            else:
+                scores = score
             # 将 feature_name 和 scores 进行批量拼接
             feature_name_list.extend([feature_name] * len(score))  # 重复 feature_name
             index_list.extend(indices)  # 添加索引

@@ -16,8 +16,13 @@
 
 
 import os
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
+os.chdir(os.path.dirname(os.path.realpath(__file__)))
+current_dir = os.path.dirname(__file__)
+fuxipac_dir = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
+sys.path.append(fuxipac_dir)
+
+
 import logging
 import fuxictr_version
 from fuxictr import datasets

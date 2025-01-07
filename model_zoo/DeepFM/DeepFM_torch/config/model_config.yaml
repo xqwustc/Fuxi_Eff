@@ -165,3 +165,211 @@ DeepFM_frappe: # This is a config template
     seed: 2019
     monitor: { 'AUC': 1, 'logloss': -1 }
     monitor_mode: 'max'
+
+DeepFM_feat_frappe: # This is a config template
+    model: DeepFM
+    dataset_id: frappe_x1
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'table'
+    score_mode: 'abs'
+    baseline: 'mean'
+    need_pretrain: False
+
+DeepFM_feat_retrain_frappe: # This is a config template
+    model: DeepFM
+    dataset_id: frappe_x1
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'retrain'
+    need_pretrain: True
+    keep_ratio: 1
+    score_version: 1
+
+DeepFM_feat_avazu: # This is a config template
+    model: DeepFM
+    dataset_id: avazu_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'table'
+    score_mode: 'abs'
+    baseline: 'mean'
+    need_pretrain: False
+
+DeepFM_feat_retrain_avazu: # This is a config template
+    model: DeepFM
+    dataset_id: avazu_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'retrain'
+    need_pretrain: True
+    keep_ratio: 0.5
+    score_version: ""
+
+DeepFM_feat_criteo: # This is a config template
+    model: DeepFM
+    dataset_id: criteo_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'table'
+    score_mode: 'abs'
+    baseline: 'mean'
+    need_pretrain: False
+
+DeepFM_feat_retrain_criteo: # This is a config template
+    model: DeepFM
+    dataset_id: criteo_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'retrain'
+    need_pretrain: True
+    keep_ratio: 0.5
+    score_version: ""
+
+DeepFM_feat_aliccp: # This is a config template
+    model: DeepFM
+    dataset_id: aliccp_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'table'
+    score_mode: 'abs'
+    baseline: 'mean'
+    need_pretrain: False
+
+DeepFM_feat_retrain_aliccp: # This is a config template
+    model: DeepFM
+    dataset_id: aliccp_x4
+    loss: 'binary_crossentropy'
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    hidden_units: [300, 300, 300]
+    hidden_activations: relu
+    net_regularizer: 0
+    embedding_regularizer: 0
+    learning_rate: 1.e-3
+    batch_norm: False
+    net_dropout: 0
+    batch_size: 10000
+    embedding_dim: 8
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
+    autofeat_mode: 'retrain'
+    need_pretrain: True
+    keep_ratio: 0.5
+    score_version: ""

@@ -47,6 +47,8 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='./config/', help='The config directory.')
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
+    parser.add_argument('--keep_ratio', type=float, default=-1, help='The percentage ratio for filtering, between 0-1.')
+
     args = vars(parser.parse_args())
     
     experiment_id = args['expid']
@@ -55,6 +57,11 @@ if __name__ == '__main__':
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     seed_everything(seed=params['seed'])
+
+    keep_ratio = args.get('keep_ratio')
+    if keep_ratio is not None and keep_ratio != -1:
+        params['keep_ratio'] = keep_ratio
+
 
     if params.get('spe_processor'):
         module_name = f"fuxictr.datasets.{params['spe_processor']}"
@@ -82,7 +89,7 @@ if __name__ == '__main__':
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
 
     if not os.path.exists(model.checkpoint) or params.get('need_pretrain'):
-        logging.info('Pretraining the base model...')
+        logging.info('Training the base model...')
         model.fit(train_gen, validation_data=valid_gen, **params)
     else:
         model.load_weights(model.checkpoint)

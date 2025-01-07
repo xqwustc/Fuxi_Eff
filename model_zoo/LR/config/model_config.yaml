@@ -43,3 +43,19 @@ LR_default: # This is a config template
     seed: 2019
     monitor: {'AUC': 1, 'logloss': -1}
     monitor_mode: 'max'
+
+LR_frappe: # This is a config template
+    model: LR
+    dataset_id: frappe_x1
+    loss: binary_crossentropy
+    metrics: ['logloss', 'AUC']
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    regularizer: 0
+    batch_size: 10000
+    epochs: 100
+    shuffle: True
+    seed: 2019
+    monitor: {'AUC': 1, 'logloss': -1}
+    monitor_mode: 'max'
