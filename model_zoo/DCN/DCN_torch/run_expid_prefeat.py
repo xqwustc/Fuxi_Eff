@@ -48,6 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
     parser.add_argument('--keep_ratio', type=float, default=-1, help='The percentage ratio for filtering, between 0-1.')
+    parser.add_argument('--train_batch', type=int, default=-1, help='The number of training batch to use.')
 
     args = vars(parser.parse_args())
     
@@ -58,9 +59,15 @@ if __name__ == '__main__':
     logging.info("Params: " + print_to_json(params))
     seed_everything(seed=params['seed'])
 
+    # --- Update new params start ---
     keep_ratio = args.get('keep_ratio')
     if keep_ratio is not None and keep_ratio != -1:
         params['keep_ratio'] = keep_ratio
+
+    train_batch = args.get('train_batch')
+    if train_batch is not None and train_batch != -1:
+        params['train_batch'] = train_batch
+    # --- Update new params end ---
 
 
     if params.get('spe_processor'):
@@ -88,9 +95,12 @@ if __name__ == '__main__':
 
     train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
 
-    if not os.path.exists(model.checkpoint) or params.get('need_pretrain'):
-        logging.info('Training the base model...')
+    if params.get('need_pretrain',False) == True:
+        logging.info('Retraining the model')
         model.fit(train_gen, validation_data=valid_gen, **params)
+    elif params.get('force_pretrain') == True or not os.path.exists(model.checkpoint):
+        logging.info('Training the base model for scores...')
+        model.fit_with_train_number(train_gen, validation_data=valid_gen, **params)
     else:
         model.load_weights(model.checkpoint)
 
