@@ -54,13 +54,11 @@ if __name__ == '__main__':
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
     parser.add_argument('--cp', type=str, help='checkpoint path')
-    parser.add_argument('--optfs', type=int,default=1,help='is using optfs?')
     args = vars(parser.parse_args())
 
     experiment_id = args['expid']
     params = load_config(args['config'], experiment_id)
     params['gpu'] = args['gpu']
-    params['optfs'] = args['optfs']
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     # seed_everything(seed=params['seed'])
@@ -97,5 +95,3 @@ if __name__ == '__main__':
         model.fit_for_optfs(train_gen, validation_data=valid_gen, **params)
     del train_gen, valid_gen
     gc.collect()
-
-    logging.info('****** No need for Val & Test evaluation ******')

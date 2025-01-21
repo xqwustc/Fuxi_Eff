@@ -29,7 +29,7 @@ from datetime import datetime
 from fuxictr.utils import load_config, set_logger, print_to_json, print_to_list
 from fuxictr.features import FeatureMap
 from fuxictr.pytorch.torch_utils import seed_everything
-from fuxictr.pytorch.dataloaders import H5DataLoader
+from fuxictr.pytorch.dataloaders import H5SelectedDataLoader, H5DataLoader
 from fuxictr.preprocess import FeatureProcessor, build_dataset
 import src as model_zoo
 import gc
@@ -93,16 +93,19 @@ if __name__ == '__main__':
     model = model_class(feature_map, **params)
     model.count_parameters() # print number of parameters used in model
 
-    train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-
     if params.get('need_pretrain',False) == True:
+        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
         logging.info('Retraining the model')
         model.fit(train_gen, validation_data=valid_gen, **params)
     elif params.get('force_pretrain') == True or not os.path.exists(model.checkpoint):
+        train_gen, valid_gen = H5SelectedDataLoader(feature_map, stage='train', **params).make_iterator()
         logging.info('Training the base model for scores...')
-        model.fit_with_train_number(train_gen, validation_data=valid_gen, **params)
+        model.fit(train_gen, validation_data=valid_gen, **params) # Do not use .fit_with_train_number here
     else:
+        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
         model.load_weights(model.checkpoint)
+        if params.get('pep_dict') is not None:
+            logging.info(f"Sparsity of the embedding matrix: {model.cal_sparsity()}")
 
     if params.get("autofeat_mode") in ['batch', 'table']:
         logging.info('****** Validation with AutoFeat ******')
@@ -115,6 +118,8 @@ if __name__ == '__main__':
     test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
     test_result = {}
     if test_gen:
-      test_result = model.evaluate(test_gen)
+        if params.get('keep_ratio') is not None:
+            logging.info(f'****** Test with Keep Ratio {params["keep_ratio"]} ******')
+        test_result = model.evaluate(test_gen)
 
 

@@ -32,7 +32,6 @@ from model_zoo.utils import get_gates_prob_autofield,get_gates_prob_my,get_sum_f
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
-from fuxictr.pytorch.layers import MaskedFeatureEmbedding
 import os
 
 EPS = 1e-6
@@ -61,18 +60,34 @@ class DCN(BaseModel):
                                   **kwargs)
         # self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
 
-        if kwargs.get('optfs',0) == 1:
-            # OptFS condition
-            if kwargs['dataset_id'] == 'avazu_x4':
-                temp = 5000
+        if kwargs.get('optfs_dict',None) is not None:
+            assert type(kwargs.get('optfs_dict')) == dict, 'optfs params should be a dict'
+            optfs_dict = {
+                'temp': 5000
+            }
+            optfs_dict.update(kwargs.get('optfs_dict'))
+            self.optfs_dict = optfs_dict
+
+            if optfs_dict.get('retrain',False):
+                ratio = kwargs.get('keep_ratio', 1)
+                kept_features = self.read_scores(score_name = 'feature_score_optfs',
+                                                 score_version=kwargs.get("score_version", ""),
+                                                 ratio=ratio)
+                print('[OptFS] Using Masked Embedding Layer.')
+                # self.need_move = True
+                self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features=kept_features, optfs_dict = optfs_dict)
             else:
-                temp = 1000
-            print('Using OptFS Embedding Layer with temp = ',temp)
-            self.embedding_layer = MaskedFeatureEmbedding(feature_map, embedding_dim,temp = temp)
+                print('[OptFS] Using OptFS Embedding Layer with parameters:', optfs_dict)
+                self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, optfs_dict = optfs_dict)
+        elif kwargs.get('pep_dict') is not None:
+            # get a dict
+            pep_dict = kwargs.get('pep_dict')
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, pep_dict = pep_dict)
         elif kwargs.get('autofeat_mode') == "retrain":
             # AutoFeat condition, will pass kept_features to embedding layer
             ratio = kwargs.get('keep_ratio', 1)
             kept_features = self.read_scores(score_version = kwargs.get("score_version", ""), ratio = ratio)
+            self.need_move = True
             self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features = kept_features)
         elif kwargs.get('autofeat_mode') in ['batch','table']:
             self.score_mode = kwargs.get('score_mode', 'sum')
@@ -281,7 +296,6 @@ class DCN(BaseModel):
 
         self.save_scores(feature_score_sorted)
         return
-
 
 
     def forward_with_dr(self, inputs, gates_prob):
@@ -843,7 +857,6 @@ class DCN(BaseModel):
             self._eval_steps = self._steps_per_epoch
 
         torch.autograd.set_detect_anomaly(True)
-
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
         logging.info("************ Epoch=1 start ************")
         for epoch in range(epochs):
@@ -859,30 +872,16 @@ class DCN(BaseModel):
                 self._batch_index = batch_index
                 self._total_steps += 1
 
-                # --- update for droprank start---
-                return_dict = self.forward_with_optfs(batch_data)
-                # --- update for droprank end---
+                return_dict = self.forward(batch_data)
 
                 self.optimizer.zero_grad()
 
                 y_true = self.get_labels(batch_data)
                 loss = self.compute_loss(return_dict, y_true)
 
-                # --- update for droprank start---
-                loss += lamda_opt*self.embedding_layer.reg()
-
-                ####
-                # dot = make_dot(loss, params=dict(self.named_parameters()))
-                # dot.view()
-                ####
-
-                # --- update for droprank end---
+                loss += self.optfs_dict['reg']*self.embedding_layer.reg()
 
                 loss.backward()
-
-                # # --- update for droprank start---
-                # print("\n",gates_theta.grad,"\n")
-                # # --- update for droprank end---
 
                 nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
                 self.optimizer.step()
@@ -901,12 +900,10 @@ class DCN(BaseModel):
             else:
                 logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
         logging.info("Training finished.")
-        logging.info("Load best model: {}".format(self.checkpoint))
-        self.load_weights(self.checkpoint)
-        feature_importance_result = pd.DataFrame({'feature_name': list(self.feature_map.features.keys()),
-                                                  'feature_weight': self.embedding_layer.mask_weight.squeeze().tolist()})
-        feature_importance_result.to_csv('feature_importance_result.csv', index=False)
-        return
+        self.evaluate_with_optfs()
+
+
+
     def fit_for_mvfs(self, data_generator, epochs=1, validation_data=None,
             max_gradient_norm=10., **kwargs):
         self.valid_gen = validation_data

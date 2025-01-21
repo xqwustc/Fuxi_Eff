@@ -24,6 +24,8 @@ import numpy as np
 from collections import OrderedDict
 from fuxictr.pytorch.torch_utils import get_initializer
 from fuxictr.pytorch import layers
+from .pep_embedding import PEPEmbedding
+from .optfs_embedding import MaskEmbedding
 import bisect
 
 
@@ -45,14 +47,25 @@ class FeatureEmbedding(nn.Module):
                                                     not_required_feature_columns=not_required_feature_columns,
                                                     use_pretrain=use_pretrain,
                                                     use_sharing=use_sharing,
-                                                    kept_features=kwargs.get("kept_features", None))
+                                                    **kwargs)
         if kwargs.get("autofeat_mode") in ['table', 'batch']:
             # Only need for AutoFeat
             self.baseline = kwargs.get("baseline", "mean")
             logging.info(f"AutoFeat mode: {kwargs.get('autofeat_mode')}, baseline: {self.baseline}")
 
             self.backup_self = copy.deepcopy(self)
+        elif kwargs.get("optfs_dict") is not None:
+            self.optfs_dict = kwargs.get("optfs_dict")
 
+    def reg(self):
+        reg_loss = 0
+        for m in self.embedding_layer.embedding_layers.values():
+            if type(m) == MaskEmbedding:
+                reg_loss += m.reg(self.optfs_dict['temp'])
+        return reg_loss
+
+    def cal_sparsity(self):
+        return self.embedding_layer.cal_sparsity()
 
     def forward(self, X, feature_source=[], feature_type=[], flatten_emb=False):
         feature_emb_dict = self.embedding_layer(X, feature_source=feature_source, feature_type=feature_type)
@@ -113,7 +126,8 @@ class FeatureEmbeddingDict(nn.Module):
                  not_required_feature_columns=None,
                  use_pretrain=True,
                  use_sharing=True,
-                 kept_features=None):
+                 kept_features=None,
+                 **kwargs):
         super(FeatureEmbeddingDict, self).__init__()
         self._feature_map = feature_map
         self.required_feature_columns = required_feature_columns
@@ -150,7 +164,9 @@ class FeatureEmbeddingDict(nn.Module):
                     padding_idx = feature_spec.get("padding_idx", None)
                     vocab_size = feature_spec["vocab_size"]
                     pre_vocab_size = vocab_size
-                    if kept_features is not None:
+
+                    reconstruct_flag = (kept_features is not None) and kwargs.get('optfs_dict', None) is None
+                    if reconstruct_flag:
                         if feature not in kept_features:
                             # All features have been pruned
                             vocab_size = 2 # for oov_idx and padding_idx
@@ -163,7 +179,7 @@ class FeatureEmbeddingDict(nn.Module):
                                 vocab_size = len(kept_features[feature]) + 2
                         self._feature_map.features[feature]['oov_idx'] = vocab_size - 1
 
-                    if kept_features is not None:
+                    if reconstruct_flag:
                         cur_map = torch.full((pre_vocab_size,), vocab_size - 1, dtype=torch.long)
                         if feature in kept_features:
                             kept_list = kept_features[feature]
@@ -184,10 +200,33 @@ class FeatureEmbeddingDict(nn.Module):
                         vocab_ind_map[feature] = cur_map
                         logging.info(f"[Prune-Embed] Construct re-map for {feature} done.")
 
-                    embedding_matrix = nn.Embedding(vocab_size,
-                                                    feat_emb_dim,
-                                                    padding_idx=padding_idx)
+                    if kwargs.get("pep_dict") is not None:
+                        opt = {
+                            'g_type': 'sigmoid',
+                            'threshold_type': 'feature',
+                            'latent_dim': feat_emb_dim,
+                            'field_dims': [vocab_size],
+                            'gk': 1,
+                            'threshold_init': -150,
+                        }
+                        assert type(kwargs.get("pep_dict")) == dict, "pep_dict should be a dict"
+                        opt.update(kwargs.get("pep_dict"))
+                        embedding_matrix = PEPEmbedding(opt)
 
+                    elif kwargs.get('optfs_dict') is not None:
+                        if kwargs.get('optfs_dict').get('retrain', False) == False:
+                            # For first train in OptFS
+                            logging.info(f"[OptFS] Use [Mask] embedding for {feature}.")
+                            embedding_matrix = MaskEmbedding(vocab_size, feat_emb_dim)
+                        else:
+                            logging.info(f'[OptFS] Use Mask embedding for {feature} with fewer features.')
+                            embedding_matrix = MaskEmbedding(vocab_size,
+                                                            feat_emb_dim,
+                                                            kept_features = kept_features.get(feature, None))
+                    else:
+                        embedding_matrix = nn.Embedding(vocab_size,
+                                                        feat_emb_dim,
+                                                        padding_idx=padding_idx)
                     if use_pretrain and "pretrained_emb" in feature_spec:
                         embedding_matrix = self.load_pretrained_embedding(embedding_matrix,
                                                                           feature_map, 
@@ -207,9 +246,18 @@ class FeatureEmbeddingDict(nn.Module):
                                                                           freeze=feature_spec["freeze_emb"],
                                                                           padding_idx=padding_idx)
                     self.embedding_layers[feature] = embedding_matrix
-        self.vocab_ind_map = vocab_ind_map
+        if vocab_ind_map:
+            self.vocab_ind_map = vocab_ind_map
         self.reset_parameters()
 
+    def cal_sparsity(self):
+        tot_params = 0
+        non_zero = 0
+        for k, v in self.embedding_layers.items():
+            assert type(v) == PEPEmbedding, "Only support PEPEmbedding"
+            tot_params += v.v.numel()
+            non_zero += torch.nonzero(v.v).size(0)
+        return non_zero / tot_params
     def get_feature_encoder(self, encoder):
         try:
             if type(encoder) == list:
@@ -319,7 +367,7 @@ class FeatureEmbeddingDict(nn.Module):
                 elif feature_spec["type"] == "categorical":
                     inp = inputs[feature].long()
 
-                    if self.kept_features is not None:
+                    if self.kept_features is not None and type(self.embedding_layers[feature]) == nn.Embedding:
                         # When it exists, it means that the feature has been pruned
                         flag = 2
                         if flag == 1:
@@ -350,33 +398,3 @@ class FeatureEmbeddingDict(nn.Module):
                     embeddings = self.feature_encoders[feature](embeddings)
                 feature_emb_dict[feature] = embeddings
         return feature_emb_dict
-
-class MaskedFeatureEmbedding(FeatureEmbedding):
-    def __init__(self, feature_map, embedding_dim, embedding_initializer="partial(nn.init.normal_, std=1e-4)", required_feature_columns=None, not_required_feature_columns=None, use_pretrain=True, use_sharing=True, mask_initial_value=0,temp=1):
-        super(MaskedFeatureEmbedding, self).__init__(feature_map, embedding_dim, embedding_initializer, required_feature_columns, not_required_feature_columns, use_pretrain, use_sharing)
-        # Add mask and initial weight
-        self.temp = temp
-        self.mask_initial_value = torch.tensor(mask_initial_value)
-        self.mask_weight = nn.Parameter(torch.Tensor(len(feature_map.features), 1))
-        nn.init.constant_(self.mask_weight, self.mask_initial_value)
-
-    def compute_mask(self, temp, ticket):
-        scaling = 1. / torch.sigmoid(self.mask_initial_value)
-        if ticket:
-            mask = (self.mask_weight > 0).float()
-        else:
-            mask = torch.sigmoid(temp * self.mask_weight)
-        return scaling * mask
-
-    def forward(self, X, feature_source=[], feature_type=[], flatten_emb=False, ticket=False):
-        feature_emb = super().forward(X, feature_source, feature_type, flatten_emb)
-        mask = self.compute_mask(self.temp, ticket)
-        return feature_emb * mask
-
-    def prune(self, temp):
-        self.mask_weight.data = torch.clamp(temp * self.mask_weight.data, max=self.mask_initial_value)
-
-    def reg(self,temp = 1):
-        return torch.sum(torch.sigmoid(temp * self.mask_weight))
-
-
