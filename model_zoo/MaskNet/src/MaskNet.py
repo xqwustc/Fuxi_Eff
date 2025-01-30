@@ -19,6 +19,11 @@ from torch import nn
 from fuxictr.pytorch.models import BaseModel
 from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block
 from fuxictr.pytorch.torch_utils import get_activation
+import logging
+from tqdm import tqdm
+import sys
+import numpy as np
+import pandas as pd
 
 
 class MaskNet(BaseModel):
@@ -46,7 +51,57 @@ class MaskNet(BaseModel):
                                       embedding_regularizer=embedding_regularizer,
                                       net_regularizer=net_regularizer,
                                       **kwargs)
-        self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
+        if kwargs.get('optfs_dict', None) is not None:
+            assert type(kwargs.get('optfs_dict')) == dict, 'optfs params should be a dict'
+            optfs_dict = {
+                'temp': 5000
+            }
+            optfs_dict.update(kwargs.get('optfs_dict'))
+            self.optfs_dict = optfs_dict
+
+            if optfs_dict.get('retrain', False):
+                ratio = kwargs.get('keep_ratio', 1)
+                kept_features = self.read_scores(score_name='feature_score_optfs',
+                                                 score_version=kwargs.get("score_version", ""),
+                                                 ratio=ratio)
+                print('[OptFS] Using Masked Embedding Layer.')
+                # self.need_move = True
+                self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features=kept_features,
+                                                        optfs_dict=optfs_dict)
+            else:
+                print('[OptFS] Using OptFS Embedding Layer with parameters:', optfs_dict)
+                self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, optfs_dict=optfs_dict)
+        elif kwargs.get('pep_dict') is not None:
+            # get a dict
+            pep_dict = kwargs.get('pep_dict')
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, pep_dict=pep_dict)
+        elif kwargs.get('autofeat_mode') == "retrain":
+            # AutoFeat condition, will pass kept_features to embedding layer
+            ratio = kwargs.get('keep_ratio', 1)
+            kept_features = self.read_scores(score_version=kwargs.get("score_version", ""), ratio=ratio)
+            self.need_move = True
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features=kept_features)
+        elif kwargs.get('autofeat_mode') in ['batch', 'table']:
+            self.score_mode = kwargs.get('score_mode', 'sum')
+            logging.info(f"Score mode: {self.score_mode}")
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, autofeat_mode=kwargs['autofeat_mode'],
+                                                    baseline=kwargs.get('baseline'))
+        else:
+            # Normal condition
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
+        if kwargs.get('autofeat_mode') != None:
+            self.autofeat_mode = kwargs['autofeat_mode']
+            if self.autofeat_mode != 'retrain':
+                # cal the score, use the share embedding for
+                kwargs['emb_layer'] = self.embedding_layer
+                self.share_embedding_layer = True
+                self.interpolate_n = 1
+                logging.info(f"Interpolation layer: {self.interpolate_n}")
+
+        # self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
+
         if model_type == "SerialMaskNet":
             self.mask_net = SerialMaskNet(input_dim=feature_map.num_fields * embedding_dim,
                                           output_dim=1,
@@ -77,17 +132,115 @@ class MaskNet(BaseModel):
         self.model_to_device()
     
     def forward(self, inputs):
-        X = self.get_inputs(inputs)
-        feature_emb = self.embedding_layer(X)
-        if self.emb_norm is not None:
-            feat_list = feature_emb.chunk(self.num_fields, dim=1)
-            V_hidden = torch.cat([self.emb_norm[i](feat) for i, feat in enumerate(feat_list)], dim=1)
+        if not hasattr(self, "autofeat_mode") or self.autofeat_mode == 'retrain':
+            X = self.get_inputs(inputs)
+            feature_emb = self.embedding_layer(X)
+            if self.emb_norm is not None:
+                feat_list = feature_emb.chunk(self.num_fields, dim=1)
+                V_hidden = torch.cat([self.emb_norm[i](feat) for i, feat in enumerate(feat_list)], dim=1)
+            else:
+                V_hidden = feature_emb
+            y_pred = self.mask_net(feature_emb.flatten(start_dim=1), V_hidden.flatten(start_dim=1))
+            return_dict = {"y_pred": y_pred}
+            return return_dict
+        elif self.autofeat_mode in ['batch', 'table']:
+            # When using AutoFeat to get scores, the forward will be different
+            return self.forward_with_autofeat(inputs)
         else:
-            V_hidden = feature_emb
-        y_pred = self.mask_net(feature_emb.flatten(start_dim=1), V_hidden.flatten(start_dim=1))
-        return_dict = {"y_pred": y_pred}
-        return return_dict
-        
+            raise NotImplementedError
+
+    def forward_with_autofeat(self, inputs, cur_interp=None):
+        # the interpolation is done for embedding table NOT for the feature field!!!
+        X = self.get_inputs(inputs)
+        if cur_interp is not None:
+            embed_res, delta_v_dict, interp_layer = self.embedding_layer(X, autofeat_mode=self.autofeat_mode,
+                                                                         interp=self.interpolate_n,
+                                                                         current_interp=cur_interp)
+
+            if isinstance(embed_res, tuple):
+                feature_emb_stack, feature_emb_cat = embed_res
+            else:
+                feature_emb = embed_res
+                # feature_emb = feature_emb_stack.flatten(start_dim=1)
+
+            if self.emb_norm is not None:
+                feat_list = feature_emb.chunk(self.num_fields, dim=1)
+                V_hidden = torch.cat([self.emb_norm[i](feat) for i, feat in enumerate(feat_list)], dim=1)
+            else:
+                V_hidden = feature_emb
+            y_pred = self.mask_net(feature_emb.flatten(start_dim=1), V_hidden.flatten(start_dim=1))
+            return_dict = {"y_pred": y_pred}
+            return return_dict, delta_v_dict, interp_layer
+
+        else:
+            embed_res = self.embedding_layer(X)
+            if isinstance(embed_res, tuple):
+                feature_emb_stack, feature_emb_cat = embed_res
+            else:
+                feature_emb = embed_res
+
+            if self.emb_norm is not None:
+                feat_list = feature_emb.chunk(self.num_fields, dim=1)
+                V_hidden = torch.cat([self.emb_norm[i](feat) for i, feat in enumerate(feat_list)], dim=1)
+            else:
+                V_hidden = feature_emb
+            y_pred = self.mask_net(feature_emb.flatten(start_dim=1), V_hidden.flatten(start_dim=1))
+            return_dict = {"y_pred": y_pred}
+            return return_dict
+
+    def evaluate_with_autofeat(self, data_generator):
+        data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+        feature_score_dict = dict() # key is feature name and v is the score tensor for each feature
+        for batch_data in data_generator:
+            for cur_interp in range(1, self.interpolate_n + 1):
+                return_dict, delta_v, interp_layer = self.forward_with_autofeat(batch_data, cur_interp)
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                loss.backward(retain_graph=False)
+
+                for feature_name, embed_table in interp_layer.embedding_layer.embedding_layers.items():
+                    if self.score_mode in ['sum', 'sum_abs']:
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).sum(dim = -1)
+                    elif self.score_mode == 'abs':
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).abs().sum(dim = -1)
+                    else:
+                        raise NotImplementedError
+
+                    if feature_name in feature_score_dict:
+                        feature_score_dict[feature_name] += feature_attr.detach().cpu().numpy()
+                    else:
+                        feature_score_dict[feature_name] = feature_attr.detach().cpu().numpy()
+
+                self.optimizer.zero_grad()
+
+                torch.cuda.empty_cache()
+
+        feature_name_list, index_list, score_list = [], [], []
+        # 遍历 feature_score_dict
+        for feature_name, score in feature_score_dict.items():
+            # 获取当前特征的索引和值
+            indices = np.arange(len(score))  # 索引
+            if self.score_mode == 'sum_abs':
+                scores = np.abs(score)
+            else:
+                scores = score
+            # 将 feature_name 和 scores 进行批量拼接
+            feature_name_list.extend([feature_name] * len(score))  # 重复 feature_name
+            index_list.extend(indices)  # 添加索引
+            score_list.extend(scores)  # 添加分数
+
+        # Combine to DataFrame
+        feature_score = pd.DataFrame({
+            'feature_name': feature_name_list,
+            'index': index_list,
+            'score': score_list
+        })
+
+        # 按照 score 降序排序
+        feature_score_sorted = feature_score.sort_values(by='score', ascending=False)
+
+        self.save_scores(feature_score_sorted)
+        return
 
 class SerialMaskNet(nn.Module):
     def __init__(self, input_dim, output_dim=None, output_activation=None, hidden_units=[], 
