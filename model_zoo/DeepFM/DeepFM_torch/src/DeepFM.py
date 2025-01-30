@@ -25,7 +25,9 @@ import pandas as pd
 from tqdm import tqdm
 import sys
 from feat_select.AdaFS_module import AdaFS
-from model_zoo.utils import get_gates_prob_my
+import feat_select.MvFS_module as Mv
+from model_zoo.utils import get_gates_prob_my, get_sum_feature_dimisions
+
 EPS = 1e-6
 
 
@@ -59,6 +61,7 @@ class DeepFM(BaseModel):
 
             kwargs['kept_features'] = kept_features # for fm-LR
             kwargs['device'] = self.device
+            self.need_move = True
         elif kwargs.get('autofeat_mode') in ['batch','table']:
             self.score_mode = kwargs.get('score_mode', 'sum')
             logging.info(f"Score mode: {self.score_mode}")
@@ -104,7 +107,7 @@ class DeepFM(BaseModel):
         """
         Inputs: [X,y]
         """
-        if self.autofeat_mode == 'retrain':
+        if not hasattr(self, 'autofeat_mode') or self.autofeat_mode == 'retrain':
             # Normal forward
             X = self.get_inputs(inputs)
             embed_res = self.embedding_layer(X)  # like(size,features,emb_size), the embedding info got
@@ -136,6 +139,25 @@ class DeepFM(BaseModel):
 
         y_pred = self.fm(X, feature_emb)
         y_pred += self.mlp(feature_emb.flatten(start_dim=1))
+        y_pred = self.output_activation(y_pred)
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def forward_with_mvfs(self, inputs):
+        X = self.get_inputs(inputs)
+        embed_res = self.embedding_layer(X)  # like(size,features,emb_size), the embedding info got
+        if isinstance(embed_res, tuple):
+            feature_emb_stack, feature_emb_cat = embed_res
+        else:
+            feature_emb_stack = embed_res
+            feature_emb_cat = feature_emb_stack.flatten(start_dim=1)
+
+        weight = self.controller(feature_emb_stack)
+        selected_field = feature_emb_stack * torch.unsqueeze(weight, 2)
+        feature_emb = selected_field.flatten(start_dim=1)
+
+        y_pred = self.fm(X, selected_field)
+        y_pred += self.mlp(feature_emb)
         y_pred = self.output_activation(y_pred)
         return_dict = {"y_pred": y_pred}
         return return_dict
@@ -347,6 +369,66 @@ class DeepFM(BaseModel):
         feature_importance_result.to_csv('feature_importance_result.csv', index=False)
         return
 
+    def fit_for_mvfs(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                return_dict = self.forward_with_mvfs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                # --- update for droprank end---
+                loss.backward()
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_mvfs()
+                if self._stop_training:
+                    break
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
     def fit_for_adafs(self, data_generator, epochs=1, validation_data=None,
             max_gradient_norm=10., **kwargs):
         self.valid_gen = validation_data
@@ -471,7 +553,35 @@ class DeepFM(BaseModel):
         pfi_score_res.to_csv('feature_importance_result.csv', index=False)
         return
 
-
+    def eval_mvfs(self,data_generator = None):
+        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        self.eval()  # set to evaluation mode
+        if data_generator is None:
+            data_generator = self.valid_gen
+        metrics = self._monitor.get_metrics()
+        with torch.no_grad():
+            y_pred = []
+            y_true = []
+            group_id = []
+            if self._verbose > 0:
+                data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_data in data_generator:
+                return_dict = self.forward_with_mvfs(batch_data)
+                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
+                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                if self.feature_map.group_id is not None:
+                    group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
+            y_pred = np.array(y_pred, np.float64)
+            y_true = np.array(y_true, np.float64)
+            group_id = np.array(group_id) if len(group_id) > 0 else None
+            if metrics is not None:
+                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+            else:
+                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
+            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+        super().checkpoint_and_earlystop(val_logs)
+        self.train()
+        return val_logs
 
     def _permute_feature(self,data_generator, feature_idx):
         """

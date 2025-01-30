@@ -92,7 +92,7 @@ if __name__ == '__main__':
     feature_map = FeatureMap(params['dataset_id'], data_dir)
     feature_map.load(feature_map_json, params)
 
-    need_pretrain = True
+    need_pretrain = False
     warmup_path = f"{params['model']}_{params['dataset_id']}_warmup4mv.pth"
     if need_pretrain:
         logging.info('****** Warmup network without controller ******')
@@ -112,12 +112,17 @@ if __name__ == '__main__':
     AUCs = []
     logloss = []
     time_consumption = []
-
+    # for i in range(0, len(feature_map.features)):
+    # for i in [6,6,6]:
     incre = 1
-
+    # for i in range(incre - 1, len(feature_map.features) + incre - 1, incre):
+    # for i in [5,6,7,8,9,10]:
+    # for i in range(29+incre - 1, len(feature_map.features) + incre - 1, incre):
+    # for i in [244,229,19,29,39,239]:
+    # for i in [19,29,39,109,119,129,139,149,159,169,179,189,199,209,219,229,239,244]:
     for i in [0, 3]:
         # for hard_k in range(incre - 1, len(feature_map.features) + incre - 1, incre):
-        for hard_k in [2,3]:
+        for hard_k in [0, 1]:
             i = min(i, len(feature_map.features) - 1)
             os.environ['HARD_K'] = str(hard_k+1)
             logging.info(f'HARD_K:{hard_k+1} with {i+1} selection controller(s).')

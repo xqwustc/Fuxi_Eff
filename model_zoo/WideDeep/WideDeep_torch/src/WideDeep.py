@@ -18,7 +18,7 @@ import os
 import torch
 from torch import nn
 from fuxictr.pytorch.models import BaseModel
-from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block, LogisticRegression, MaskedFeatureEmbedding
+from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block, LogisticRegression
 import numpy as np
 from tqdm import tqdm
 import sys
@@ -59,22 +59,63 @@ class WideDeep(BaseModel):
                                        net_regularizer=net_regularizer,
                                        **kwargs)
 
-        # deal with optfs
-        if kwargs.get('optfs',0) == 1:
-            print('Using OptFS Embedding Layer')
-            if kwargs['dataset_id'] == 'criteo_x4':
-                temp = 1000
+        if kwargs.get('optfs_dict', None) is not None:
+            assert type(kwargs.get('optfs_dict')) == dict, 'optfs params should be a dict'
+            optfs_dict = {
+                'temp': 5000
+            }
+            optfs_dict.update(kwargs.get('optfs_dict'))
+            self.optfs_dict = optfs_dict
+
+            if optfs_dict.get('retrain', False):
+                ratio = kwargs.get('keep_ratio', 1)
+                kept_features = self.read_scores(score_name='feature_score_optfs',
+                                                 score_version=kwargs.get("score_version", ""),
+                                                 ratio=ratio)
+                print('[OptFS] Using Masked Embedding Layer.')
+                # self.need_move = True
+                self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features=kept_features,
+                                                        optfs_dict=optfs_dict)
             else:
-                temp = 5000
-            print('Using OptFS Embedding Layer with temp = ', temp)
-            self.embedding_layer = MaskedFeatureEmbedding(feature_map, embedding_dim,temp = temp)
+                print('[OptFS] Using OptFS Embedding Layer with parameters:', optfs_dict)
+                self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, optfs_dict=optfs_dict)
+        elif kwargs.get('pep_dict') is not None:
+            # get a dict
+            pep_dict = kwargs.get('pep_dict')
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, pep_dict=pep_dict)
+        elif kwargs.get('autofeat_mode') == "retrain":
+            # AutoFeat condition, will pass kept_features to embedding layer
+            ratio = kwargs.get('keep_ratio', 1)
+            kept_features = self.read_scores(score_version=kwargs.get("score_version", ""), ratio=ratio)
+            self.need_move = True
+            kwargs['kept_features'] = kept_features # for fm-LR
+            kwargs['device'] = self.device
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features=kept_features)
+            self.lr_layer = LogisticRegression(feature_map, use_bias=False, **kwargs)
+        elif kwargs.get('autofeat_mode') in ['batch', 'table']:
+            self.score_mode = kwargs.get('score_mode', 'sum')
+            logging.info(f"Score mode: {self.score_mode}")
+            self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, autofeat_mode=kwargs['autofeat_mode'],
+                                                    baseline=kwargs.get('baseline'))
+            self.lr_layer = LogisticRegression(feature_map, embedding_layer=self.embedding_layer, use_bias=False)
         else:
+            # Normal condition
             self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
 
-        self.interpolate_n = 5
+        if kwargs.get('autofeat_mode') != None:
+            self.autofeat_mode = kwargs['autofeat_mode']
+            if self.autofeat_mode != 'retrain':
+                # cal the score, use the share embedding for
+                kwargs['emb_layer'] = self.embedding_layer
+                self.share_embedding_layer = True
+                self.interpolate_n = 5
+
+        # self.interpolate_n = 5
         self.learning_rate = learning_rate
 
-        self.lr_layer = LogisticRegression(feature_map, use_bias=False)
+        if hasattr(self, 'lr_layer') is False:
+            self.lr_layer = LogisticRegression(feature_map, use_bias=False)
+
         self.dnn = MLP_Block(input_dim=get_sum_feature_dimisions(self.embedding_layer),
                              #embedding_dim*len(feature_map.features),#input_dim=embedding_dim * feature_map.num_fields,
                              output_dim=1, 
@@ -121,15 +162,22 @@ class WideDeep(BaseModel):
         """
         Inputs: [X,y]
         """
-        X = self.get_inputs(inputs)
-        # feature_emb = self.embedding_layer(X)
-        feature_emb = self.embedding_layer(X,flatten_emb=True)
-        y_pred = self.lr_layer(X)
-        # y_pred += self.dnn(feature_emb.flatten(start_dim=1))
-        y_pred += self.dnn(feature_emb)
-        y_pred = self.output_activation(y_pred)
-        return_dict = {"y_pred": y_pred}
-        return return_dict
+        if not hasattr(self,"autofeat_mode") or self.autofeat_mode == 'retrain':
+            # Normal forward
+            X = self.get_inputs(inputs)
+            # feature_emb = self.embedding_layer(X)
+            feature_emb = self.embedding_layer(X,flatten_emb=True)
+            y_pred = self.lr_layer(X)
+            # y_pred += self.dnn(feature_emb.flatten(start_dim=1))
+            y_pred += self.dnn(feature_emb)
+            y_pred = self.output_activation(y_pred)
+            return_dict = {"y_pred": y_pred}
+            return return_dict
+        elif self.autofeat_mode in ['batch', 'table']:
+            # When using AutoFeat to get scores, the forward will be different
+            return self.forward_with_autofeat(inputs)
+        else:
+            raise NotImplementedError
 
     def forward_with_optfs(self, inputs):
         """
@@ -622,6 +670,101 @@ class WideDeep(BaseModel):
         logging.info("Training finished.")
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
+
+    def forward_with_autofeat(self, inputs, cur_interp=None):
+        # the interpolation is done for embedding table NOT for the feature field!!!
+        X = self.get_inputs(inputs)
+        if cur_interp is not None:
+            embed_res, delta_v_dict, interp_layer = self.embedding_layer(X, autofeat_mode=self.autofeat_mode,
+                                                                         interp=self.interpolate_n,
+                                                                         current_interp=cur_interp)
+
+            if isinstance(embed_res, tuple):
+                feature_emb_stack, feature_emb_cat = embed_res
+            else:
+                feature_emb_stack = embed_res
+                feature_emb = feature_emb_stack.flatten(start_dim=1)
+
+            # lr-easy version
+            y_pred = torch.mean(feature_emb_stack, dim=2, keepdim=True)
+            y_pred = y_pred.sum(dim=1)
+
+            y_pred += self.dnn(feature_emb)
+            y_pred = self.output_activation(y_pred)
+            return_dict = {"y_pred": y_pred}
+            return return_dict, delta_v_dict, interp_layer
+        else:
+            embed_res = self.embedding_layer(X)
+            if isinstance(embed_res, tuple):
+                feature_emb_stack, feature_emb_cat = embed_res
+            else:
+                feature_emb_stack = embed_res
+                feature_emb = feature_emb_stack.flatten(start_dim=1)
+
+
+            # lr-easy version
+            y_pred = torch.mean(feature_emb_stack, dim = 2, keepdim = True)
+            y_pred = y_pred.sum(dim=1)
+
+            y_pred += self.dnn(feature_emb)
+            y_pred = self.output_activation(y_pred)
+            return_dict = {"y_pred": y_pred}
+            return return_dict
+
+    def evaluate_with_autofeat(self, data_generator):
+        data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+        feature_score_dict = dict() # key is feature name and v is the score tensor for each feature
+        for batch_data in data_generator:
+            for cur_interp in range(1, self.interpolate_n + 1):
+                return_dict, delta_v, interp_layer = self.forward_with_autofeat(batch_data, cur_interp)
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                loss.backward(retain_graph=False)
+
+                for feature_name, embed_table in interp_layer.embedding_layer.embedding_layers.items():
+                    if self.score_mode in ['sum', 'sum_abs']:
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).sum(dim = -1)
+                    elif self.score_mode == 'abs':
+                        feature_attr = (embed_table.weight.grad * delta_v[feature_name]).abs().sum(dim = -1)
+                    else:
+                        raise NotImplementedError
+
+                    if feature_name in feature_score_dict:
+                        feature_score_dict[feature_name] += feature_attr.detach().cpu().numpy()
+                    else:
+                        feature_score_dict[feature_name] = feature_attr.detach().cpu().numpy()
+
+                self.optimizer.zero_grad()
+
+                torch.cuda.empty_cache()
+
+        feature_name_list, index_list, score_list = [], [], []
+        # 遍历 feature_score_dict
+        for feature_name, score in feature_score_dict.items():
+            # 获取当前特征的索引和值
+            indices = np.arange(len(score))  # 索引
+            if self.score_mode == 'sum_abs':
+                scores = np.abs(score)
+            else:
+                scores = score
+            # 将 feature_name 和 scores 进行批量拼接
+            feature_name_list.extend([feature_name] * len(score))  # 重复 feature_name
+            index_list.extend(indices)  # 添加索引
+            score_list.extend(scores)  # 添加分数
+
+        # Combine to DataFrame
+        feature_score = pd.DataFrame({
+            'feature_name': feature_name_list,
+            'index': index_list,
+            'score': score_list
+        })
+
+        # 按照 score 降序排序
+        feature_score_sorted = feature_score.sort_values(by='score', ascending=False)
+
+        self.save_scores(feature_score_sorted)
+        return
+
     def evaluate_with_pfi(self, data_generator, valid_result = None, metrics=None, seed=2019):
         logging.info("Start evaluate with PFI-WD")
 

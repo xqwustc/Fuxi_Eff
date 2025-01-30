@@ -242,6 +242,83 @@ class MaskNet(BaseModel):
         self.save_scores(feature_score_sorted)
         return
 
+    def forward_with_mvfs(self,inputs):
+        X = self.get_inputs(inputs)
+        feature_emb = self.embedding_layer(X)
+        # The embedding process for X will be in MvFS
+        weight = self.controller(feature_emb)
+        feature_emb = feature_emb * torch.unsqueeze(weight, 2)
+
+        if self.emb_norm is not None:
+            feat_list = feature_emb.chunk(self.num_fields, dim=1)
+            V_hidden = torch.cat([self.emb_norm[i](feat) for i, feat in enumerate(feat_list)], dim=1)
+        else:
+            V_hidden = feature_emb
+        y_pred = self.mask_net(feature_emb.flatten(start_dim=1), V_hidden.flatten(start_dim=1))
+        return_dict = {"y_pred": y_pred}
+        return return_dict
+
+    def fit_for_mvfs(self, data_generator, epochs=1, validation_data=None,
+            max_gradient_norm=10., **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                return_dict = self.forward_with_mvfs(batch_data)
+                # --- update for droprank end---
+
+                self.optimizer.zero_grad()
+
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                # --- update for droprank end---
+                loss.backward()
+                # # --- update for droprank start---
+                # print("\n",gates_theta.grad,"\n")
+                # # --- update for droprank end---
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    # eval the model
+                    self.eval_mvfs()
+                if self._stop_training:
+                    break
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+        logging.info("Load best model: {}".format(self.checkpoint))
+        self.load_weights(self.checkpoint)
+
 class SerialMaskNet(nn.Module):
     def __init__(self, input_dim, output_dim=None, output_activation=None, hidden_units=[], 
                  hidden_activations="ReLU", reduction_ratio=1, dropout_rates=0, layer_norm=True):
