@@ -126,10 +126,32 @@ if __name__ == '__main__':
 
     incre = 1
     # for i in range(incre-1, df.shape[0]+incre-1, incre):
+    def ratio_for_features(ratio = 0.1):
+        '''
+            Given the feature values ratio, return the K that satisfies the ratio
+        '''
+        topk_params = copy.deepcopy(params)
+        topk_params['use_features'] = df['feature_name'].values.tolist()
+        topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
+        topk_feature_map.load(feature_map_json, topk_params)
+        tot_features = 0
+        for feature_name, d in topk_feature_map.features.items():
+            tot_features += d['vocab_size']
 
-    for i in [9]:
+        for i in range(len(feature_map.features)):
+            cur_ratio = sum([topk_feature_map.features[d]['vocab_size'] for d in topk_params['use_features']][:i + 1]) / tot_features
+            if cur_ratio >= ratio:
+                if i == 0:
+                    return int(len(df['feature_name'].values.tolist())*ratio), cur_ratio
+                else:
+                    return i, cur_ratio
+
+    idx, ratio = ratio_for_features(0.1)
+
+    for i in [idx-1, idx]:
+    # for i in [9]:
     # for i in [29]*3:
-    # for i in [7]*5:
+    # for i in [9, 14, 22]:
     # for i in range(3, df.shape[0], 1):
         seed_everything(seed=params['seed'])
         i = min(i, df.shape[0] - 1)

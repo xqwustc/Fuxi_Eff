@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
+import time
 
 import torch
 from torch import nn
@@ -33,6 +34,7 @@ from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
 import os
+import copy
 
 EPS = 1e-6
 lamda_opt = 2e-9
@@ -77,6 +79,7 @@ class DCN(BaseModel):
                 # self.need_move = True
                 self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, kept_features=kept_features, optfs_dict = optfs_dict)
             else:
+                optfs_dict['temp_increase'] = optfs_dict["final_temp"] ** (1./ (optfs_dict["search_epoch"]-1))
                 print('[OptFS] Using OptFS Embedding Layer with parameters:', optfs_dict)
                 self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim, optfs_dict = optfs_dict)
         elif kwargs.get('pep_dict') is not None:
@@ -98,7 +101,7 @@ class DCN(BaseModel):
             # Normal condition
             self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
 
-        self.interpolate_n = 5
+        self.interpolate_n = 10
         self.mcdropout_n = int(net_dropout * 100)
 
         if kwargs.get('autofeat_mode', None) is not None:
@@ -144,11 +147,13 @@ class DCN(BaseModel):
         if kwargs.get('mode', None):
             if kwargs.get('mode') == 1:  # soft
                 self.adafs = AdaFS(feature_map.num_fields, embedding_dim)
-            else: # hard
+            elif kwargs.get('mode') == 0: # hard
                 self.adafs = AdaFS_hard(feature_map.num_fields,embedding_dim,
                                         select_num=kwargs.get('select_num'))
+            else:
+                raise ValueError('Mode for adafs should be 0 or 1')
         # --- update for AdaFS end---
-
+        # self._checkpoint()
         self.reset_parameters()
         self.model_to_device()
 
@@ -855,6 +860,78 @@ class DCN(BaseModel):
         self._epoch_index = 0
         if self._eval_steps is None:
             self._eval_steps = self._steps_per_epoch
+        self.embedding_layer.set_tickets(False)
+        self.embedding_layer.set_alpha(0.)
+
+        torch.autograd.set_detect_anomaly(True)
+        logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
+        logging.info("************ Epoch=1 start ************")
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            self._batch_index = 0
+            train_loss = 0
+            self.train()
+            if epoch > 0:
+                self.optfs_dict['temp'] *= self.optfs_dict['temp_increase']
+                self.embedding_layer.set_temp(self.optfs_dict['temp'])
+            if epoch == self.optfs_dict['rewind_epoch']:
+                logging.warning(f'Checkpointing at epoch {epoch} for rewinding')
+                self._checkpoint()
+            if self._verbose == 0:
+                batch_iterator = data_generator
+            else:
+                batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._batch_index = batch_index
+                self._total_steps += 1
+
+                return_dict = self.forward(batch_data)
+
+                self.optimizer.zero_grad()
+
+                # --- add reg term ---
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                loss += self.optfs_dict['reg']*self.embedding_layer.reg()
+
+                loss.backward()
+
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+
+                train_loss += loss.item()
+                if self._total_steps % self._eval_steps == 0:
+                    logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
+                    train_loss = 0
+                    self.eval_step()
+                if self._stop_training:
+                    break
+
+            if self._stop_training:
+                break
+            else:
+                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+        logging.info("Training finished.")
+
+    def fit_for_optfs_with_ratio(self, data_generator, epochs=1, validation_data=None,
+                      max_gradient_norm=10., ratio = 1, **kwargs):
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        self._batch_index = 0
+        self._epoch_index = 0
+        if self._eval_steps is None:
+            self._eval_steps = self._steps_per_epoch
+
+        self.embedding_layer.set_tickets(True)
+        self.embedding_layer.set_temp(self.optfs_dict['final_temp'])
+        self.embedding_layer.set_alpha(0.)
+        self._rewind_weights()
+        logging.info(f"Current remaining ratio: {self.embedding_layer.compute_remaining_weights()}")
 
         torch.autograd.set_detect_anomaly(True)
         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
@@ -879,8 +956,6 @@ class DCN(BaseModel):
                 y_true = self.get_labels(batch_data)
                 loss = self.compute_loss(return_dict, y_true)
 
-                loss += self.optfs_dict['reg']*self.embedding_layer.reg()
-
                 loss.backward()
 
                 nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
@@ -890,8 +965,7 @@ class DCN(BaseModel):
                 if self._total_steps % self._eval_steps == 0:
                     logging.info("Train loss: {:.6f}".format(train_loss / self._eval_steps))
                     train_loss = 0
-                    # eval the model
-                    self.eval_optfs()
+                    self.eval_step()
                 if self._stop_training:
                     break
 
@@ -900,9 +974,6 @@ class DCN(BaseModel):
             else:
                 logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
         logging.info("Training finished.")
-        self.evaluate_with_optfs()
-
-
 
     def fit_for_mvfs(self, data_generator, epochs=1, validation_data=None,
             max_gradient_norm=10., **kwargs):
@@ -993,3 +1064,14 @@ class DCN(BaseModel):
         # 先写死每个维度的emb_size = 32，后续可以改成从feature_map中读取
         return [32]*len(feature_map.features)
 
+    def _checkpoint(self):
+        self.embedding_layer.checkpoint()
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.Linear):
+                m.checkpoint = copy.deepcopy(m.state_dict())
+
+    def _rewind_weights(self):
+        self.embedding_layer.rewind_weights()
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.Linear):
+                m.load_state_dict(m.checkpoint)

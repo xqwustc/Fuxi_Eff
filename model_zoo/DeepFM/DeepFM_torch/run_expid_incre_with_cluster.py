@@ -100,10 +100,14 @@ if __name__ == '__main__':
 
     # for i in [10,11,12,13,14]:
     # for i in [14]*6:
-    SOTA = 0.9740
+    # SOTA = 0.9740
     # for i in [3, 5]*100:
-    for i in range(9, 200, 10):
+    # for i in range(9, 200, 10):
+    incre = 10
+    # for i in range(incre - 1, df.shape[0] + incre - 1, incre):
+    for i in [119,169,139,209,179,199]:
         i = min(i, df.shape[0] - 1)
+        # seed_everything(seed=params['seed'])
         topk_params = copy.deepcopy(params)
         cur_features_rows = df.iloc[:i + 1, :]
 
@@ -149,8 +153,8 @@ if __name__ == '__main__':
         del train_gen, valid_gen
         gc.collect()
 
-        if valid_result['AUC'] >= SOTA:
-            break
+        # if valid_result['AUC'] >= SOTA:
+        #     break
 
     topk_ablation_df = pd.DataFrame({'feature_name': topk_column_name,
                                      'topk_logloss': topk_logloss_result,

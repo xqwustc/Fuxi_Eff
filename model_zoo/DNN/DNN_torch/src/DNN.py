@@ -30,12 +30,11 @@ from tqdm import tqdm
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
-from fuxictr.pytorch.layers import MaskedFeatureEmbedding
 from feat_select.AdaFS_module import AdaFS,AdaFS_hard
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
-from fuxictr.pytorch.layers import MaskedFeatureEmbedding
+# from fuxictr.pytorch.layers import MaskedFeatureEmbedding
 lamda_opt = 2e-9
 EPS = 1e-6
 
@@ -160,8 +159,8 @@ class DNN(BaseModel):
         X = self.get_inputs(inputs)
         feature_emb = self.embedding_layer(X)
         # The embedding process for X will be in MvFS
-        self.weight = self.controller(feature_emb)
-        selected_field = feature_emb * torch.unsqueeze(self.weight, 2)
+        weight = self.controller(feature_emb)
+        selected_field = feature_emb * torch.unsqueeze(weight, 2)
 
         feature_emb = selected_field.flatten(start_dim=1)
         y_pred = self.mlp(feature_emb)

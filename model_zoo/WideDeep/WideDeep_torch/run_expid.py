@@ -18,6 +18,9 @@
 import os
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
+
+sys.path.append('../../../fuxictr')
+sys.path.append('../../../')
 import logging
 import fuxictr_version
 from fuxictr import datasets
@@ -78,11 +81,11 @@ if __name__ == '__main__':
     test_result = {}
     if test_gen:
       test_result = model.evaluate(test_gen)
-    
-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
-    with open(result_filename, 'a+') as fw:
-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
-            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
-                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
-                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
+
+    # result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+    # with open(result_filename, 'a+') as fw:
+    #     fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+    #         .format(datetime.now().strftime('%Y%m%d-%H%M%S'),
+    #                 ' '.join(sys.argv), experiment_id, params['dataset_id'],
+    #                 "N.A.", print_to_list(valid_result), print_to_list(test_result)))
 

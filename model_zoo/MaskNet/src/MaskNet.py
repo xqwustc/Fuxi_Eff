@@ -24,6 +24,8 @@ from tqdm import tqdm
 import sys
 import numpy as np
 import pandas as pd
+from model_zoo.utils import get_sum_feature_dimisions
+import feat_select.MvFS_module as Mv
 
 
 class MaskNet(BaseModel):
@@ -44,6 +46,7 @@ class MaskNet(BaseModel):
                  net_dropout=0,
                  emb_layernorm=True,
                  net_layernorm=True,
+                 select_num=0,
                  **kwargs):
         super(MaskNet, self).__init__(feature_map,
                                       model_id=model_id,
@@ -97,7 +100,7 @@ class MaskNet(BaseModel):
                 # cal the score, use the share embedding for
                 kwargs['emb_layer'] = self.embedding_layer
                 self.share_embedding_layer = True
-                self.interpolate_n = 1
+                self.interpolate_n = 10
                 logging.info(f"Interpolation layer: {self.interpolate_n}")
 
         # self.embedding_layer = FeatureEmbedding(feature_map, embedding_dim)
@@ -127,6 +130,11 @@ class MaskNet(BaseModel):
             self.emb_norm = nn.ModuleList(nn.LayerNorm(embedding_dim) for _ in range(self.num_fields))
         else:
             self.emb_norm = None
+
+        if select_num > 0:
+            self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),
+                                                 embed_dims=len(self.feature_map.features), num_selections=select_num)
+
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()

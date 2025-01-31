@@ -28,7 +28,7 @@ from tqdm import tqdm
 from itertools import cycle
 import torch.optim as optim
 import feat_select.MvFS_module as Mv
-from fuxictr.pytorch.layers import MaskedFeatureEmbedding
+# from fuxictr.pytorch.layers import MaskedFeatureEmbedding
 from feat_select.AdaFS_module import AdaFS,AdaFS_hard
 EPS = 1e-6
 lamda_opt = 2e-9

@@ -1,20 +1,3 @@
-# =========================================================================
-# Copyright (C) 2022. Huawei Technologies Co., Ltd. All rights reserved.
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# =========================================================================
-
-
 import os
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
@@ -45,6 +28,7 @@ import torch
 import numpy as np
 import logging
 from infomer import email
+import os
 
 if __name__ == '__main__':
     ''' Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
@@ -61,7 +45,7 @@ if __name__ == '__main__':
     params['gpu'] = args['gpu']
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
-    # seed_everything(seed=params['seed'])
+    seed_everything(seed=params['seed'])
 
     if params.get('spe_processor',None) != None:
         module_name = f"fuxictr.datasets.{params['spe_processor']}"
@@ -92,6 +76,21 @@ if __name__ == '__main__':
         print('load model from checkpoint')
         model.load_state_dict(torch.load(args['cp']))
     else:
-        model.fit_for_optfs(train_gen, validation_data=valid_gen, **params)
+        # .pth is specifically for optfs model retrain save
+        model_pretrain_path = os.path.splitext(model.checkpoint)[0] + ".pth"
+        if os.path.exists(model_pretrain_path):
+            model.load_weights(model_pretrain_path)
+        else:
+            model.fit_for_optfs(train_gen, validation_data=valid_gen, **params)
+            model.save_weights(model_pretrain_path)
+        seed_everything(seed=params['seed'])
+        model.fit_for_optfs_with_ratio(train_gen, validation_data=valid_gen, **params)
     del train_gen, valid_gen
     gc.collect()
+
+    test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
+    test_result = {}
+    if test_gen:
+        if params.get('keep_ratio') is not None:
+            logging.info(f'****** Test with Keep Ratio {params["keep_ratio"]} ******')
+        test_result = model.evaluate(test_gen)

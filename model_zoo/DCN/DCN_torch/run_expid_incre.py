@@ -96,26 +96,36 @@ if __name__ == '__main__':
     topk_auc_result = []
     time_consumption = []
     inf_times = []
-    #for i in range(df.shape[0]):
 
-    # for i in range(30, df.shape[0], 1):
-    # times = 2
-    # while times > 0:
-    #     times -= 1
-        # for i in [10,11,df.shape[0] - 1]:
-    # for i in range(df.shape[0]-1, 11, -1):
-        #for i in range(11, 12):
-        # cur_AUC = 0
-        # total_times = 0
-        # SOTA = 0.79256
-        # while cur_AUC < SOTA:
-        # for i in range(9, df.shape[0],10):
 
-    # incre = 1
-    # for i in range(incre-1, df.shape[0]+incre-1, incre):
-    # for i in [7,8,9,10,11,12]:
-    for i in [5]:
+    def ratio_for_features(ratio = 0.1, idx = None):
+        '''
+            Given the feature values ratio, return the K that satisfies the ratio
+        '''
+        topk_params = copy.deepcopy(params)
+        topk_params['use_features'] = df['feature_name'].values.tolist()
+        topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
+        topk_feature_map.load(feature_map_json, topk_params)
+        tot_features = 0
+        for feature_name, d in topk_feature_map.features.items():
+            tot_features += d['vocab_size']
+
+        if idx is not None:
+            return sum([topk_feature_map.features[d]['vocab_size'] for d in topk_params['use_features']][:idx + 1]) / tot_features
+
+        for i in range(len(feature_map.features)):
+            cur_ratio = sum([topk_feature_map.features[d]['vocab_size'] for d in topk_params['use_features']][:i + 1]) / tot_features
+            if cur_ratio >= ratio:
+                if i == 0:
+                    return int(len(df['feature_name'].values.tolist())*ratio), cur_ratio
+                else:
+                    return i, cur_ratio
+
+    idx, ratio = ratio_for_features(0.1)
+    logging.info(f"idx = {idx}, ratio = {ratio}; idx - 1 = {idx-1}, ratio = {ratio_for_features(ratio = 0, idx = idx-1)}")
+    for i in [idx-1, idx]:
         i = min(i, df.shape[0] - 1)
+        seed_everything(seed=params['seed'])
         topk_params = copy.deepcopy(params)
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
         logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'], len(topk_params['use_features'])))

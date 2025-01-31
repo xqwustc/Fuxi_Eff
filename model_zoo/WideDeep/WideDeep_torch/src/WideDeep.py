@@ -134,7 +134,7 @@ class WideDeep(BaseModel):
         # --- update for droprank end---
 
         # # --- update for AdaFS start---
-        self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
+        # self.adafs = AdaFS(feature_map.num_fields,embedding_dim)
         # # --- update for AdaFS end---
         if select_num > 0:
             self.controller = Mv.MvFS_Controller(input_dim=get_sum_feature_dimisions(self.embedding_layer),

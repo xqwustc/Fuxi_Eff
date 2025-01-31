@@ -549,6 +549,9 @@ DCN_feat_optfs_frappe:
     optfs_dict: # select sth to pep
         temp: 5000
         reg: 1.0e-8
+        search_epoch: 5
+        rewind_epoch: 4
+        final_temp: 200
 
 DCN_feat_retrain_frappe:
     model: DCN
@@ -600,8 +603,8 @@ DCN_feat_avazu:
     seed: 20242025
     monitor: { 'AUC': 1, 'logloss': -1 }
     monitor_mode: 'max'
+    need_pretrain: True
     autofeat_mode: 'table'
-    need_pretrain: False
     score_mode: 'abs'
     baseline: 'zero'
 
@@ -629,7 +632,7 @@ DCN_feat_few_avazu:
     monitor_mode: 'max'
     autofeat_mode: 'table'
     need_pretrain: False
-    force_pretrain: True # force pretrain
+    force_pretrain: False # force pretrain
     score_mode: 'abs'
     baseline: 'mean'
     train_ratio: 0.05
@@ -653,13 +656,13 @@ DCN_feat_retrain_avazu:
     batch_norm: False
     epochs: 100
     shuffle: True
-    seed: 20242025
+    seed: 20262027
     monitor: { 'AUC': 1, 'logloss': -1 }
     monitor_mode: 'max'
     autofeat_mode: 'retrain'
     need_pretrain: True
     keep_ratio: 0.1
-    score_version: 3
+    score_version: 6
 
 DCN_feat_pep_avazu:
     model: DCN
@@ -714,8 +717,10 @@ DCN_feat_optfs_avazu:
     need_pretrain: True
 #    force_pretrain: True # force pretrain
     optfs_dict: # select sth to pep
-        temp: 5000
-        reg: 1.0e-8
+        reg: 3.0e-6
+        search_epoch: 5
+        rewind_epoch: 2
+        final_temp: 5000
 
 DCN_feat_pep_retrain_avazu:
     model: DCN
@@ -805,6 +810,29 @@ DCN_feat_criteo:
     score_mode: 'abs'
     baseline: 'mean'
 
+DCN_feat_nor_criteo:
+    model: DCN
+    dataset_id: criteo_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+
 DCN_feat_optfs_criteo:
     model: DCN
     dataset_id: criteo_x4 # dont forget to change the dataset_id
@@ -832,6 +860,9 @@ DCN_feat_optfs_criteo:
     optfs_dict: # select sth to pep
         temp: 10000
         reg: 1.0e-8
+        search_epoch: 5
+        rewind_epoch: 1
+        final_temp: 10000
 
 DCN_feat_few_criteo:
     model: DCN
@@ -887,7 +918,7 @@ DCN_feat_retrain_criteo:
     autofeat_mode: 'retrain'
     need_pretrain: True
     keep_ratio: 0.8
-    score_version: 6
+    score_version: 12
 
 DCN_feat_optfs_retrain_criteo:
     model: DCN
@@ -944,6 +975,29 @@ DCN_feat_aliccp:
     score_mode: 'abs'
     baseline: 'mean'
 
+DCN_feat_nor_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+
 DCN_feat_few_aliccp:
     model: DCN
     dataset_id: aliccp_x4 # dont forget to change the dataset_id
@@ -999,7 +1053,7 @@ DCN_feat_retrain_aliccp:
     autofeat_mode: 'retrain'
     need_pretrain: True
     keep_ratio: 0.4
-    score_version: 3
+    score_version: 9
 
 DCN_movielens:
     model: DCN
@@ -1075,7 +1129,30 @@ DCN_feat_few_ipinyou:
     force_pretrain: True # force pretrain
     score_mode: 'abs'
     baseline: 'mean'
-    train_ratio: 0.05
+    train_ratio: 0.1
+
+DCN_feat_nor_ipinyou:
+    model: DCN
+    dataset_id: ipinyou_x2 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
 
 DCN_feat_retrain_ipinyou:
     model: DCN
@@ -1102,4 +1179,4 @@ DCN_feat_retrain_ipinyou:
     autofeat_mode: 'retrain'
     need_pretrain: True
     keep_ratio: 0.8
-    score_version: 1
+    score_version: 7

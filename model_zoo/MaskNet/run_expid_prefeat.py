@@ -19,7 +19,7 @@ import os
 import sys
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 current_dir = os.path.dirname(__file__)
-fuxipac_dir = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
+fuxipac_dir = os.path.abspath(os.path.join(current_dir, '..', '..'))
 sys.path.append(fuxipac_dir)
 
 import sys
@@ -108,10 +108,7 @@ if __name__ == '__main__':
         logging.info('Retraining the model')
         model.fit(train_gen, validation_data=valid_gen, **params)
     elif params.get('force_pretrain') == True or not os.path.exists(model.checkpoint):
-        if params.get('train_ratio') is None:
-            train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-        else:
-            train_gen, valid_gen = H5SelectedDataLoader(feature_map, stage='train', **params).make_iterator()
+        train_gen, valid_gen = H5SelectedDataLoader(feature_map, stage='train', **params).make_iterator()
         logging.info('Training the base model for scores...')
         model.fit(train_gen, validation_data=valid_gen, **params) # Do not use .fit_with_train_number here
     else:
