@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# 定义xx的取值范围
+values=(1 0.01 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
+timestamp=$(date +"%Y%m%d_%H%M%S")
+# 遍历所有xx的值
+for xx in "${values[@]}"
+do
+    # 打印当前正在执行的xx值
+    echo "Running with keep_ratio=${xx}"
+
+    # 执行python脚本并将输出写入日志文件
+    python /data/STEVEN8868/FuxiCTR/model_zoo/MaskNet/run_expid_prefeat.py --expid MaskNet_feat_retrain_ipinyou --gpu 6 --keep_ratio ${xx} >> "MaskNet_feat_retrain_ipinyoux2_${timestamp}.log" 2>&1
+
+    # 在日志文件中添加前后换行的分隔线
+    echo -e "\n----------------------------------------------------Running done with keep_ratio=${xx}\n" >> "MaskNet_feat_retrain_ipinyoux2_${timestamp}.log"
+done

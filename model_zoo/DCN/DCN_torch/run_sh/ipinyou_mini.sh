@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 定义xx的取值范围
-values=(1 0.0001 0.001 0.01 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
+values=(0.1 0.3 0.7)
 timestamp=$(date +"%Y%m%d_%H%M%S")
 # 遍历所有xx的值
 for xx in "${values[@]}"

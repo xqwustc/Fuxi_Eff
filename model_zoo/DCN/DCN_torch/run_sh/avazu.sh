@@ -10,7 +10,7 @@ do
     echo "Running with keep_ratio=${xx}"
 
     # 执行python脚本并将输出写入日志文件
-    python /data/STEVEN8868/FuxiCTR/model_zoo/DCN/DCN_torch/run_expid_prefeat.py --expid DCN_feat_retrain_avazu --gpu 7 --keep_ratio ${xx} >> "DCN_feat_retrain_avazu_${timestamp}.log" 2>&1
+    python /data/STEVEN8868/FuxiCTR/model_zoo/DCN/DCN_torch/run_expid_prefeat.py --expid DCN_feat_retrain_avazu --gpu 2 --keep_ratio ${xx} >> "DCN_feat_retrain_avazu_${timestamp}.log" 2>&1
 
     # 在日志文件中添加前后换行的分隔线
     echo -e "\n----------------------------------------------------Running done with keep_ratio=${xx}\n" >> "DCN_feat_retrain_avazu_${timestamp}.log"
