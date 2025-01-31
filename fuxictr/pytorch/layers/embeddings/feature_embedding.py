@@ -57,12 +57,49 @@ class FeatureEmbedding(nn.Module):
         elif kwargs.get("optfs_dict") is not None:
             self.optfs_dict = kwargs.get("optfs_dict")
 
+    ## Update for OptFS
     def reg(self):
         reg_loss = 0
         for m in self.embedding_layer.embedding_layers.values():
             if type(m) == MaskEmbedding:
                 reg_loss += m.reg(self.optfs_dict['temp'])
         return reg_loss
+
+    def checkpoint(self):
+        for k, v in self.embedding_layer.embedding_layers.items():
+            if type(v) == MaskEmbedding:
+                v.checkpoint()
+
+    def rewind_weights(self):
+        for k, v in self.embedding_layer.embedding_layers.items():
+            if type(v) == MaskEmbedding:
+                v.rewind_weights()
+
+    def compute_remaining_weights(self, alpha = 0.0):
+        noss, tot = 0, 0
+        for k, v in self.embedding_layer.embedding_layers.items():
+            if type(v) == MaskEmbedding:
+                logging.info(f"Current temp:{v.temp}")
+                nos, al = v.compute_remaining_weights(v.temp, v.ticket, alpha)
+                noss += nos
+                tot += al
+
+        return noss/tot
+
+    def set_temp(self, temp):
+        for k, v in self.embedding_layer.embedding_layers.items():
+            if type(v) == MaskEmbedding:
+                v.temp = temp
+
+    def set_tickets(self, ticket):
+        for k, v in self.embedding_layer.embedding_layers.items():
+            if type(v) == MaskEmbedding:
+                v.ticket = ticket
+
+    def set_alpha(self, alpha):
+        for k, v in self.embedding_layer.embedding_layers.items():
+            if type(v) == MaskEmbedding:
+                v.alpha = alpha
 
     def cal_sparsity(self):
         return self.embedding_layer.cal_sparsity()
@@ -216,10 +253,10 @@ class FeatureEmbeddingDict(nn.Module):
                     elif kwargs.get('optfs_dict') is not None:
                         if kwargs.get('optfs_dict').get('retrain', False) == False:
                             # For first train in OptFS
-                            logging.info(f"[OptFS] Use [Mask] embedding for {feature}.")
+                            logging.info(f"[OptFS] Use [Mask] all-embedding for {feature}.")
                             embedding_matrix = MaskEmbedding(vocab_size, feat_emb_dim)
                         else:
-                            logging.info(f'[OptFS] Use Mask embedding for {feature} with fewer features.')
+                            logging.info(f'[OptFS] Use [Mask] embedding for {feature} with fewer features.')
                             embedding_matrix = MaskEmbedding(vocab_size,
                                                             feat_emb_dim,
                                                             kept_features = kept_features.get(feature, None))

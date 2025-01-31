@@ -1,3 +1,5 @@
+import logging
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -58,7 +60,7 @@ class MultiLayerPerceptron(torch.nn.Module):
         return self.mlp(x)
 
 
-class MaskEmbedding(nn.Module):
+class MaskEmbedding_v1(nn.Module):
     def __init__(self, feature_num, latent_dim, mask_initial_value=0., **kwargs):
         super().__init__()
         self.feature_num = feature_num
@@ -99,6 +101,64 @@ class MaskEmbedding(nn.Module):
     def compute_remaining_weights(self, temp, ticket=False):
         if ticket:
             return float((self.mask_weight > 0.).sum()) / self.mask_weight.numel()
+        else:
+            m = torch.sigmoid(temp * self.mask_weight)
+            print("max mask weight: {wa:6f}, min mask weight: {wi:6f}".format(wa=torch.max(self.mask_weight),
+                                                                              wi=torch.min(self.mask_weight)))
+            print("max mask: {ma:8f}, min mask: {mi:8f}".format(ma=torch.max(m), mi=torch.min(m)))
+            print("mask number: {mn:6f}".format(mn=float((m == 0.).sum())))
+            return 1 - float((m == 0.).sum()) / m.numel()
+
+    def checkpoint(self):
+        self.init_weight.data = self.embedding.clone()
+
+    def rewind_weights(self):
+        self.embedding.data = self.init_weight.clone()
+
+    def reg(self, temp):
+        return torch.sum(torch.sigmoid(temp * self.mask_weight))
+
+class MaskEmbedding(nn.Module):
+    def __init__(self, feature_num, latent_dim, mask_initial_value=0.):
+        super().__init__()
+        self.feature_num = feature_num
+        self.latent_dim = latent_dim
+        self.mask_initial_value = mask_initial_value
+        self.embedding = nn.Parameter(torch.zeros(feature_num, latent_dim))
+        # nn.init.xavier_uniform_(self.embedding)
+        nn.init.xavier_uniform_(self.embedding)  # TODO: check any conflict with original embedding initialization
+        self.init_weight = nn.Parameter(torch.zeros_like(self.embedding), requires_grad=False)
+        self.init_mask()
+        self.temp = 1
+
+    def init_mask(self):
+        self.mask_weight = nn.Parameter(torch.Tensor(self.feature_num, 1))
+        nn.init.constant_(self.mask_weight, self.mask_initial_value)
+
+    def compute_mask(self, x, temp, ticket, alpha):
+        scaling = 1. / sigmoid(self.mask_initial_value)
+        mask_weight = F.embedding(x, self.mask_weight)
+        if ticket:
+            mask = (mask_weight > alpha).float()
+        else:
+            mask = torch.sigmoid(temp * mask_weight)
+        return scaling * mask
+
+    def prune(self, temp):
+        self.mask_weight.data = torch.clamp(temp * self.mask_weight.data, max=self.mask_initial_value)
+
+    def forward(self, x):
+        ticket = self.ticket
+        temp = self.temp
+        alpha = self.alpha
+        embed = F.embedding(x, self.embedding)
+        mask = self.compute_mask(x, temp, ticket, alpha)
+        return embed * mask
+
+    def compute_remaining_weights(self, temp, ticket=False, alpha = 0.0):
+        logging.info(f"temp: {temp}, ticket: {ticket}")
+        if ticket:
+            return float((self.mask_weight > alpha).sum()), self.mask_weight.numel()
         else:
             m = torch.sigmoid(temp * self.mask_weight)
             print("max mask weight: {wa:6f}, min mask weight: {wi:6f}".format(wa=torch.max(self.mask_weight),

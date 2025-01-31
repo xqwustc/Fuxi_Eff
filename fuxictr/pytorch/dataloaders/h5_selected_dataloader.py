@@ -148,6 +148,9 @@ class DataLoader(data.DataLoader):
                     logging.info(f"Yielding batch {best_batch_index}, which covers no new values.")
                     break
 
+                dist = abs(len(self.batch_order) - self.num_batches * self.train_ratio)
+                if int(dist) % 20 == 0:
+                    logging.info(f"Dist to target: {dist} batches towards {self.num_batches * self.train_ratio}.")
                 batch_coverages.pop(0)  # Remove the batch that is being yielded
 
                 self._check_coverage(best_batch_index,

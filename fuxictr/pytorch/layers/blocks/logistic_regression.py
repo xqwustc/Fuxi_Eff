@@ -21,7 +21,7 @@ from fuxictr.pytorch.layers import FeatureEmbedding
 
 
 class LogisticRegression(nn.Module):
-    def __init__(self, feature_map, use_bias=True,embedding_layer = None, **kwargs):
+    def __init__(self, feature_map, use_bias=True, embedding_layer = None, **kwargs):
         super(LogisticRegression, self).__init__()
         self.bias = nn.Parameter(torch.zeros(1), requires_grad=True) if use_bias else None
         # A trick for quick one-hot encoding in LR
@@ -29,6 +29,7 @@ class LogisticRegression(nn.Module):
             logging.info("Use same embedding layer for Logistic Regression as external embedding layer.")
             self.embedding_layer = embedding_layer
         else:
+            logging.info("Use the independent embedding layer for Logistic Regression.")
             self.embedding_layer = FeatureEmbedding(feature_map, 1, use_pretrain=False, use_sharing=False,
                                                     kept_features=kwargs.get('kept_features'))
             if kwargs.get('kept_features') is not None:

@@ -26,7 +26,7 @@ from fuxictr.utils import Monitor
 from tqdm import tqdm
 import pandas as pd
 from fuxictr.pytorch.layers.embeddings import MaskEmbedding
-
+import time
 
 class BaseModel(nn.Module):
     def __init__(self, 
@@ -250,6 +250,7 @@ class BaseModel(nn.Module):
             self.save_weights(self.checkpoint)
 
     def eval_step(self):
+        time.sleep(2)
         logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
         val_logs = self.evaluate(self.valid_gen, metrics=self._monitor.get_metrics())
         self.checkpoint_and_earlystop(val_logs)
