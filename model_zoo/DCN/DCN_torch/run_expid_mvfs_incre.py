@@ -57,14 +57,22 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
     parser.add_argument('--cp', type=str, help='checkpoint path')
     parser.add_argument('--epoch_pre', type=int, default=1, nargs='+', help='pretrain/main_train epochs')
+    parser.add_argument('--hard_K', type=int, help='hard_K is the selected feature number')
     args = vars(parser.parse_args())
+
+    if 'HARD_K' not in os.environ:
+        # os.environ['HARD_K'] = str(args['hard_K'])  # 环境变量的值必须是字符串
+        # logging.info("[OK] Set environment variable HARD_K to {}".format(os.environ['HARD_K']))
+        pass
+    else:
+        raise ValueError("HARD_K is already set in the environment variable, please check it")
 
     experiment_id = args['expid']
     params = load_config(args['config'], experiment_id)
     params['gpu'] = args['gpu']
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
-    # seed_everything(seed=params['seed'])
+    seed_everything(seed=params['seed'])
 
     if params.get('spe_processor',None) != None:
         module_name = f"fuxictr.datasets.{params['spe_processor']}"
@@ -84,7 +92,7 @@ if __name__ == '__main__':
     feature_map = FeatureMap(params['dataset_id'], data_dir)
     feature_map.load(feature_map_json, params)
 
-    need_pretrain = False
+    need_pretrain = True
     warmup_path = f"{params['model']}_{params['dataset_id']}_warmup4mv.pth"
     if need_pretrain:
         logging.info('****** Warmup network without controller ******')
@@ -108,40 +116,47 @@ if __name__ == '__main__':
     # for i in [6,6,6]:
     incre = 1
     # for i in range(incre - 1, len(feature_map.features) + incre - 1, incre):
-    for i in [5,6,7,8,9,10]:
+    # for i in [5,6,7,8,9,10]:
     # for i in range(29+incre - 1, len(feature_map.features) + incre - 1, incre):
     # for i in [244,229,19,29,39,239]:
     # for i in [19,29,39,109,119,129,139,149,159,169,179,189,199,209,219,229,239,244]:
-        i = min(i, len(feature_map.features)-1)
-        model_class = getattr(model_zoo, params['model'])
-        print('params[model]', params['model'])
-        model = model_class(feature_map, select_num=i + 1, **params)
-        model.load_state_dict(torch.load(warmup_path), strict=False)
-        logging.info('--- Loaded warmup model from {} ---'.format(warmup_path))
-        select_nums.append(i + 1)
-        model.count_parameters()  # print number of parameters used in model
-        logging.info('Used Feature Number:{} '.format(i + 1))
+    for i in [0, 3]:
+        # for hard_k in range(incre - 1, len(feature_map.features) + incre - 1, incre):
+        for hard_k in [2, 3]:
+            i = min(i, len(feature_map.features) - 1)
+            os.environ['HARD_K'] = str(hard_k+1)
+            logging.info(f'HARD_K:{hard_k+1} with {i+1} selection controller(s).')
+            seed_everything(seed=params['seed'])
 
-        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-        if args.get('cp', None) != None:
-            print('load model from checkpoint')
-            model.load_state_dict(torch.load(args['cp']))
-        else:
-            start_time = datetime.now()
-            model.fit_for_mvfs(train_gen, validation_data=valid_gen, **params)
-            time_consumption.append((datetime.now() - start_time).seconds)
-        del train_gen, valid_gen
-        gc.collect()
+            model_class = getattr(model_zoo, params['model'])
+            print('params[model]', params['model'])
+            model = model_class(feature_map, select_num=i + 1, **params)
+            model.load_state_dict(torch.load(warmup_path), strict=False)
+            logging.info('--- Loaded warmup model from {} ---'.format(warmup_path))
 
-        logging.info('******** Test evaluation ********')
-        test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
-        test_result = {}
-        if test_gen:
-            test_result = model.eval_mvfs(test_gen)
-            AUCs.append(test_result['AUC'])
-            logloss.append(test_result['logloss'])
-        del test_gen
-        gc.collect()
+            select_nums.append(i + 1)
+            model.count_parameters()  # print number of parameters used in model
+
+            train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
+            if args.get('cp', None) != None:
+                print('load model from checkpoint')
+                model.load_state_dict(torch.load(args['cp']))
+            else:
+                start_time = datetime.now()
+                model.fit_for_mvfs(train_gen, validation_data=valid_gen, **params)
+                time_consumption.append((datetime.now() - start_time).seconds)
+            del train_gen, valid_gen
+            gc.collect()
+
+            logging.info('******** Test evaluation ********')
+            test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
+            test_result = {}
+            if test_gen:
+                test_result = model.eval_mvfs(test_gen)
+                AUCs.append(test_result['AUC'])
+                logloss.append(test_result['logloss'])
+            del test_gen
+            gc.collect()
     # Save the result
     topk_ablation_df = pd.DataFrame({'feature_num': select_nums,
                                      'topk_logloss': logloss,

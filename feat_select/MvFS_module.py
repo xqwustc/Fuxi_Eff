@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 import torch
-
+import os, logging
 
 class SelectionNetwork(nn.Module):
     def __init__(self, input_dims, output_dims):
@@ -28,6 +28,8 @@ class MvFS_Controller(nn.Module):
         super().__init__()
         self.inputdim = input_dim
         self.num_selections = num_selections
+        self.hard_k = int(os.getenv('HARD_K'))
+        logging.info(f"Mv/Ada Selecting {self.hard_k} features.")
 
         self.T = 1
 
@@ -60,6 +62,22 @@ class MvFS_Controller(nn.Module):
 
         if self.T < 5:
             self.T += 0.001
+
+        if hasattr(self, 'hard_k'):
+            scores = self.keep_topk_values_mask(scores)
+
+        return scores
+
+    def keep_topk_values_mask(self, scores):
+        k = self.hard_k
+
+        values, indices = torch.topk(scores, k, dim=1, largest=True, sorted=False)
+        mask = torch.zeros_like(scores, dtype=torch.bool)
+        mask.scatter_(1, indices, 1)
+        # scores.mul_(mask.to(scores.dtype))
+        scores = torch.where(mask, scores, torch.zeros_like(scores))
+        # scores = mask.to(scores.dtype)
+
         return scores
 
 

@@ -92,7 +92,7 @@ if __name__ == '__main__':
     feature_map = FeatureMap(params['dataset_id'], data_dir)
     feature_map.load(feature_map_json, params)
 
-    need_pretrain = True
+    need_pretrain = False
     warmup_path = f"{params['model']}_{params['dataset_id']}_warmup4mv.pth"
     if need_pretrain:
         logging.info('****** Warmup network without controller ******')

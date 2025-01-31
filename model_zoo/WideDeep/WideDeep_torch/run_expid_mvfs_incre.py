@@ -117,7 +117,7 @@ if __name__ == '__main__':
 
     for i in [0, 3]:
         # for hard_k in range(incre - 1, len(feature_map.features) + incre - 1, incre):
-        for hard_k in [2,3]:
+        for hard_k in [0, 1]:
             i = min(i, len(feature_map.features) - 1)
             os.environ['HARD_K'] = str(hard_k+1)
             logging.info(f'HARD_K:{hard_k+1} with {i+1} selection controller(s).')
