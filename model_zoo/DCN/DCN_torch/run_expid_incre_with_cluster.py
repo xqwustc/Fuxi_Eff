@@ -167,8 +167,10 @@ if __name__ == '__main__':
                 break
     else:
         # for i in [19,29,39,49,59,69,219]*3:
-        for i in [16]:
+        for i in range(7, df.shape[0]):
+        # for i in [16]:
             i = min(i, df.shape[0] - 1)
+            seed_everything(seed=params['seed'])
             topk_params = copy.deepcopy(params)
             cur_features_rows = df.iloc[:i + 1, :]
 

@@ -96,7 +96,7 @@ DNN_avazu: # This is a config template
     batch_norm: False
     epochs: 100
     shuffle: True
-    seed: 2019
+    seed: 20242025
     monitor: { 'AUC': 1, 'logloss': -1 }
     monitor_mode: 'max'
 
@@ -118,7 +118,7 @@ DNN_avazu_kdd: # This is a config template
     batch_norm: False
     epochs: 100
     shuffle: True
-    seed: 2019
+    seed: 20242025
     monitor: { 'AUC': 1, 'logloss': -1 }
     monitor_mode: 'max'
 

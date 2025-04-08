@@ -107,8 +107,9 @@ if __name__ == '__main__':
     # for i in [139,df.shape[0]-1]:
     # for i in range(8, 12):
     # for i in range(29+incre - 1, df.shape[0] + incre - 1, incre):
-    for i in [23]*5:
+    for i in [13,14]:
         i = min(i,df.shape[0] - 1)
+        seed_everything(seed=params['seed'])
         topk_params = copy.deepcopy(params)
         cur_features_rows = df.iloc[:i + 1, :]
 

@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
     parser.add_argument('--cp', type=str, help='checkpoint path')
-    parser.add_argument('--epoch_pre', type=int, default=1, nargs='+', help='pretrain/main_train epochs')
+    parser.add_argument('--epoch_pre', type=int, default=2, nargs='+', help='pretrain/main_train epochs')
     parser.add_argument('--hard_K', type=int, help='hard_K is the selected feature number')
     args = vars(parser.parse_args())
 
@@ -120,9 +120,10 @@ if __name__ == '__main__':
     # for i in range(29+incre - 1, len(feature_map.features) + incre - 1, incre):
     # for i in [244,229,19,29,39,239]:
     # for i in [19,29,39,109,119,129,139,149,159,169,179,189,199,209,219,229,239,244]:
-    for i in [0, 3]:
+    for i in [0, 4]:
         # for hard_k in range(incre - 1, len(feature_map.features) + incre - 1, incre):
-        for hard_k in [2, 3]:
+        # for hard_k in [2, 3]:
+        for hard_k in [23]:
             i = min(i, len(feature_map.features) - 1)
             os.environ['HARD_K'] = str(hard_k+1)
             logging.info(f'HARD_K:{hard_k+1} with {i+1} selection controller(s).')

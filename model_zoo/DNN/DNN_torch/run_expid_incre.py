@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # incre = 1
     # for i in range(incre-1, df.shape[0]+incre-1, incre):
-    for i in [9]*5:
+    for i in [23]:
     # for i in [3,4]*3:
     # for i in [149,229,239,219]*5:
     # for i in [33,34,38]*2:

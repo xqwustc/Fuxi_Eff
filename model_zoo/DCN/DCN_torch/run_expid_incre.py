@@ -123,7 +123,9 @@ if __name__ == '__main__':
 
     idx, ratio = ratio_for_features(0.1)
     logging.info(f"idx = {idx}, ratio = {ratio}; idx - 1 = {idx-1}, ratio = {ratio_for_features(ratio = 0, idx = idx-1)}")
-    for i in [idx-1, idx]:
+    # for i in [idx-1, idx]:
+    # for i in range(7, 12):
+    for i in [8,9,10,11,23]:
         i = min(i, df.shape[0] - 1)
         seed_everything(seed=params['seed'])
         topk_params = copy.deepcopy(params)

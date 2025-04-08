@@ -25,7 +25,7 @@ from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get
 from fuxictr.utils import Monitor
 from tqdm import tqdm
 import pandas as pd
-from fuxictr.pytorch.layers.embeddings import MaskEmbedding
+# from fuxictr.pytorch.layers.embeddings import MaskEmbedding
 import time
 
 class BaseModel(nn.Module):

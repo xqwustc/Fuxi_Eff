@@ -148,7 +148,8 @@ if __name__ == '__main__':
 
     idx, ratio = ratio_for_features(0.1)
 
-    for i in [idx-1, idx]:
+    # for i in [idx-1, idx]:
+    for i in [23]:
     # for i in [9]:
     # for i in [29]*3:
     # for i in [9, 14, 22]:
@@ -159,9 +160,9 @@ if __name__ == '__main__':
     # while cur_AUC < SOTA:
     #     for i in range(8, 13):
         topk_params = copy.deepcopy(params)
-        topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
-        logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
-                                                                          len(topk_params['use_features'])))
+        # topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
+        # logging.info('--- Used Features: {} (totally {} features)'.format(topk_params['use_features'],
+        #                                                                   len(topk_params['use_features'])))
         topk_feature_map = FeatureMap(topk_params['dataset_id'], data_dir)
         topk_feature_map.load(feature_map_json, topk_params)
 
