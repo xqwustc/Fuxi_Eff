@@ -19,12 +19,10 @@ import os
 import sys
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 current_dir = os.path.dirname(__file__)
-fuxipac_dir = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
+fuxipac_dir = os.path.abspath(os.path.join(current_dir, '..', '..'))
 sys.path.append(fuxipac_dir)
 
-import sys
 import logging
-# from fuxictr import datasets
 from datetime import datetime
 from fuxictr.utils import load_config, set_logger, print_to_json, print_to_list
 from fuxictr.features import FeatureMap
@@ -38,14 +36,15 @@ import os
 from pathlib import Path
 import pickle
 import importlib
+import copy
 
 
 if __name__ == '__main__':
-    ''' Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
+    ''' Usage: python run_expid_optfs.py --config {config_dir} --expid {experiment_id} --gpu {gpu_device_id}
     '''
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='./config/', help='The config directory.')
-    parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
+    parser.add_argument('--expid', type=str, default='MaskNet_optfs_criteo', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
     parser.add_argument('--keep_ratio', type=float, default=-1, help='The percentage ratio for filtering, between 0-1.')
     parser.add_argument('--train_batch', type=int, default=-1, help='The number of training batch to use.')
@@ -68,7 +67,6 @@ if __name__ == '__main__':
     if train_batch is not None and train_batch != -1:
         params['train_batch'] = train_batch
     # --- Update new params end ---
-
 
     if params.get('spe_processor'):
         module_name = f"fuxictr.datasets.{params['spe_processor']}"
@@ -95,57 +93,31 @@ if __name__ == '__main__':
 
     if params.get('optfs_dict') is not None:
         train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-        model_pretrain_path = os.path.splitext(model.checkpoint)[0] + ".pth"
-        # if os.path.exists(model_pretrain_path):
-        #     model.load_weights(model_pretrain_path)
-        if False:
-            pass
+        
+        # OptFS retrain mode
+        if params.get('optfs_dict').get('retrain', False):
+            logging.info('Training with OptFS retrain mode')
+            model.fit_for_optfs_with_ratio(train_gen, validation_data=valid_gen, **params)
+        # OptFS search mode
         else:
-            model.fit_for_optfs(train_gen, validation_data=valid_gen, **params)
-            model.save_weights(model_pretrain_path)
-            logging.info('******** Test evaluation ********')
-            test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
-            test_result = {}
-            if test_gen:
-                if params.get('keep_ratio') is not None:
-                    logging.info(f'****** Test with Keep Ratio {params["keep_ratio"]} ******')
-                test_result = model.evaluate(test_gen)
-
-        seed_everything(seed=params['seed'])
-        model.fit_for_optfs_with_ratio(train_gen, validation_data=valid_gen, **params)
-    elif params.get('need_pretrain',False) == True:
-        train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-        logging.info('Retraining the model')
-        model.fit(train_gen, validation_data=valid_gen, **params)
-    elif params.get('force_pretrain') == True or not os.path.exists(model.checkpoint):
-        if params.get('train_ratio') is None:
-            train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-        else:
-            train_gen, valid_gen = H5SelectedDataLoader(feature_map, stage='train', **params).make_iterator()
-        logging.info('Training the base model for scores...')
-        model.fit(train_gen, validation_data=valid_gen, **params) # Do not use .fit_with_train_number here
+            # Check for pretrained model
+            model_pretrain_path = os.path.splitext(model.checkpoint)[0] + ".pth"
+            if os.path.exists(model_pretrain_path):
+                logging.info(f'Loading pretrained model from {model_pretrain_path}')
+                model.load_weights(model_pretrain_path)
+            else:
+                logging.info('Training model with OptFS search mode')
+                model.fit_for_optfs(train_gen, validation_data=valid_gen, **params)
+                model.save_weights(model_pretrain_path)
     else:
-        if params.get('train_ratio') is not None:
-            train_gen, valid_gen = H5SelectedDataLoader(feature_map, stage='train', **params).make_iterator()
-        else:
-            train_gen, valid_gen = H5DataLoader(feature_map, stage='train', **params).make_iterator()
-        model.load_weights(model.checkpoint)
-        if params.get('pep_dict') is not None:
-            logging.info(f"Sparsity of the embedding matrix: {model.cal_sparsity()}")
+        logging.error("This script requires optfs_dict in config. Please use a config with optfs_dict.")
+        sys.exit(1)
 
-    if params.get("autofeat_mode") in ['batch', 'table']:
-        logging.info('****** Validation with AutoFeat ******')
-        valid_result = model.evaluate_with_autofeat(valid_gen)
-        del train_gen, valid_gen
-        gc.collect()
-
-
+    # Evaluate on test set
     logging.info('******** Test evaluation ********')
     test_gen = H5DataLoader(feature_map, stage='test', **params).make_iterator()
     test_result = {}
     if test_gen:
         if params.get('keep_ratio') is not None:
             logging.info(f'****** Test with Keep Ratio {params["keep_ratio"]} ******')
-        test_result = model.evaluate(test_gen)
-
-
+        test_result = model.evaluate(test_gen) 

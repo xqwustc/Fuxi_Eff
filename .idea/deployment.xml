@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="STEVEN8868@210.45.70.162:1743 password (3)" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="STEVEN8868@210.45.70.162:1707 password" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="502">
         <serverdata>
@@ -27,6 +27,13 @@
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1707 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/data/STEVEN8868/FuxiCTR" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
@@ -111,6 +118,13 @@
         <serverdata>
           <mappings>
             <mapping deploy="/data/STEVEN8868/FuxiCTR" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="STEVEN8868@210.45.70.162:1741 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

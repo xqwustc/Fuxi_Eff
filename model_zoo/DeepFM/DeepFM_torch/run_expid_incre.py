@@ -56,11 +56,14 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='./config/', help='The config directory.')
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
+    parser.add_argument('--imp_path', type=str, default='feature_importance_result.csv', help='importance_path')
     args = vars(parser.parse_args())
 
     experiment_id = args['expid']
     params = load_config(args['config'], experiment_id)
     params['gpu'] = args['gpu']
+    args["imp_path"] = params.get("imp_path", args["imp_path"])
+
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     seed_everything(seed=params['seed'])
@@ -89,7 +92,7 @@ if __name__ == '__main__':
     logging.info("Feature specs: " + print_to_json(feature_map.features))
 
     # 解析特征重要性的均值和方差作为先验
-    df = pd.read_csv('feature_importance_result.csv')
+    df = pd.read_csv(args["imp_path"])
 
     topk_column_name = []
     topk_logloss_result = []
@@ -123,7 +126,7 @@ if __name__ == '__main__':
 
     idx, ratio = ratio_for_features(0.1)
 
-    for i in [idx-1, idx]:
+    for i in [idx, idx - 1]:
     # for i in [119, 169, 139, 209, 179, 199]:
     # incre = 1
     # for i in range(10 + incre-1, df.shape[0]+incre-1, incre):

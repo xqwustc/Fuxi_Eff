@@ -631,6 +631,497 @@ DCN_feat_avazu:
     score_mode: 'abs'
     baseline: 'zero'
 
+DCN_feat_rf_criteo:
+    model: DCN
+    dataset_id: criteo_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_rf_criteo.csv"
+
+DCN_feat_xgb_criteo:
+    model: DCN
+    dataset_id: criteo_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_xgb_criteo.csv"
+
+DCN_feat_rf_ipinyou:
+    model: DCN
+    dataset_id: ipinyou_x2 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_rf_ipinyou.csv"
+
+DCN_feat_xgb_ipinyou:
+    model: DCN
+    dataset_id: ipinyou_x2 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_xgb_ipinyou.csv"
+
+DCN_feat_rfe_ipinyou:
+    model: DCN
+    dataset_id: ipinyou_x2 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_rfe_ipinyou.csv"
+
+DCN_feat_rfe_criteo:
+    model: DCN
+    dataset_id: criteo_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_rfe_criteo.csv"
+
+
+DCN_feat_rfe_avazu:
+    model: DCN
+    dataset_id: avazu_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_rfe_avazu.csv"
+
+DCN_feat_rfe_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_rfe_aliccp.csv"
+
+DCN_feat_rf_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_rf_aliccp.csv"
+
+DCN_feat_xgb_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/WideDeep/WideDeep_torch/feature_importance_result_xgb_aliccp.csv"
+
+DCN_feat_pfi_avazu:
+    model: DCN
+    dataset_id: avazu_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+
+DCN_mvfs_new_avazu:
+    model: DCN
+    dataset_id: avazu_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+
+DCN_feat_pfi_criteo:
+    model: DCN
+    dataset_id: criteo_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+
+DCN_feat_pfi_ipinyou:
+    model: DCN
+    dataset_id: ipinyou_x2 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+
+DCN_feat_pfi_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+
+DCN_pfi_retrain_ipinyou:
+    model: DCN
+    dataset_id: ipinyou_x2 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/DCN/DCN_torch/feature_importance_result_ipinyou.csv"
+
+DCN_pfi_retrain_criteo:
+    model: DCN
+    dataset_id: criteo_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/DCN/DCN_torch/feature_importance_result_criteo.csv"
+
+DCN_pfi_retrain_avazu:
+    model: DCN
+    dataset_id: avazu_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/DCN/DCN_torch/feature_importance_result_avazu.csv"
+
+DCN_pfi_retrain_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 100
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: False
+    force_pretrain: False # force pretrain
+    imp_path: "/data/STEVEN8868/FuxiCTR/model_zoo/DCN/DCN_torch/feature_importance_result_aliccp.csv"
+
+
 DCN_feat_few_avazu:
     model: DCN
     dataset_id: avazu_x4 # dont forget to change the dataset_id
@@ -732,7 +1223,7 @@ DCN_feat_optfs_avazu:
     num_cross_layers: 3
     net_dropout: 0
     batch_norm: False
-    epochs: 100
+    epochs: 1
     shuffle: True
     seed: 20242025
     monitor: { 'AUC': 1, 'logloss': -1 }
@@ -873,7 +1364,69 @@ DCN_feat_optfs_criteo:
     num_cross_layers: 3
     net_dropout: 0
     batch_norm: False
-    epochs: 100
+    epochs: 1
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: True
+#    force_pretrain: True # force pretrain
+    optfs_dict: # select sth to pep
+        temp: 10000
+        reg: 1.0e-8
+        search_epoch: 5
+        rewind_epoch: 1
+        final_temp: 10000
+
+DCN_feat_optfs_ipinyou:
+    model: DCN
+    dataset_id: ipinyou_x2 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 1
+    shuffle: True
+    seed: 20242025
+    monitor: { 'AUC': 1, 'logloss': -1 }
+    monitor_mode: 'max'
+    need_pretrain: True
+#    force_pretrain: True # force pretrain
+    optfs_dict: # select sth to pep
+        temp: 10000
+        reg: 1.0e-8
+        search_epoch: 5
+        rewind_epoch: 1
+        final_temp: 10000
+
+DCN_feat_optfs_aliccp:
+    model: DCN
+    dataset_id: aliccp_x4 # dont forget to change the dataset_id
+    loss: 'binary_crossentropy'
+    metrics: [ 'logloss', 'AUC' ]
+    task: binary_classification
+    optimizer: adam
+    learning_rate: 1.0e-3
+    embedding_regularizer: 0
+    net_regularizer: 0
+    batch_size: 10000  # 10000
+    embedding_dim: 8
+    dnn_hidden_units: [ 1024, 512,256 ]
+    dnn_activations: relu
+    num_cross_layers: 3
+    net_dropout: 0
+    batch_norm: False
+    epochs: 1
     shuffle: True
     seed: 20242025
     monitor: { 'AUC': 1, 'logloss': -1 }

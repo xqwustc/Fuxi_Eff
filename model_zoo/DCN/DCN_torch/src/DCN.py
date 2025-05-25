@@ -535,16 +535,18 @@ class DCN(BaseModel):
                 pfi_score_res = pd.concat([pfi_score_res, diff], ignore_index=True)
 
         # Add feature name
-        pfi_score_res.insert(0,'feature_name',list(self.feature_map.features.keys()))
-
+        pfi_score_res.insert(0, 'feature_name', list(self.feature_map.features.keys()))
         # Get the absolute value of AUC & logloss
         pfi_score_res['AUC'] = pfi_score_res['AUC'].abs()
         pfi_score_res['logloss'] = pfi_score_res['logloss'].abs()
-
         # Sort by AUC and see AUC as the feature_weight
-        pfi_score_res = pfi_score_res.sort_values(by='AUC',ascending=False)
+        pfi_score_res = pfi_score_res.sort_values(by='AUC', ascending=False)
         pfi_score_res.insert(1, 'feature_weight', pfi_score_res['AUC'])
-        pfi_score_res.to_csv('feature_importance_result.csv',index=False)
+
+        dataset_name = self.feature_map.dataset_id.split('_')[0]
+        save_path = f'feature_importance_result_{dataset_name}.csv'
+        logging.info(f"Saving feature importance result to {save_path}")
+        pfi_score_res.to_csv(save_path, index=False)
         return
 
     def evaluate_with_adafs(self, data_generator,seed = 2019):

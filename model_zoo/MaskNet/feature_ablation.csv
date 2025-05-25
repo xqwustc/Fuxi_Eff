@@ -1,0 +1,3 @@
+,feature_name,topk_logloss,topk_auc
+0,"topk_3_with_['device_ip', 'site_id', 'app_id']",0.3875760218544229,0.7645646992262053
+1,"topk_2_with_['device_ip', 'site_id']",0.39566708788131105,0.7491872377113526

@@ -46,7 +46,9 @@ def get_optimizer(optimizer, params, lr):
         if optimizer.lower() == "adam":
             optimizer = "Adam"
     try:
+        # optimizer = getattr(torch.optim, optimizer)(params, lr=lr, weight_decay = 1.0e-6)
         optimizer = getattr(torch.optim, optimizer)(params, lr=lr)
+        print(optimizer)
     except:
         raise NotImplementedError("optimizer={} is not supported.".format(optimizer))
     return optimizer

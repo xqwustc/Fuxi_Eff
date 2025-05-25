@@ -58,11 +58,13 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='./config/', help='The config directory.')
     parser.add_argument('--expid', type=str, default='DeepFM_test', help='The experiment id to run.')
     parser.add_argument('--gpu', type=int, default=-1, help='The gpu index, -1 for cpu')
+    parser.add_argument('--imp_path', type=str, default='feature_importance_result.csv', help = 'importance_path')
     args = vars(parser.parse_args())
 
     experiment_id = args['expid']
     params = load_config(args['config'], experiment_id)
     params['gpu'] = args['gpu']
+    args["imp_path"] = params.get("imp_path", args["imp_path"])
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     seed_everything(seed=params['seed'])
@@ -89,13 +91,15 @@ if __name__ == '__main__':
     logging.info("Feature specs: " + print_to_json(feature_map.features))
 
     # 解析特征重要性的均值和方差作为先验
-    df = pd.read_csv('feature_importance_result.csv')
+
+    df = pd.read_csv(args["imp_path"])
 
     topk_column_name = []
     topk_logloss_result = []
     topk_auc_result = []
 
-    def ratio_for_features(ratio = 0.1):
+
+    def ratio_for_features(ratio=0.1, idx=None):
         '''
             Given the feature values ratio, return the K that satisfies the ratio
         '''
@@ -107,20 +111,26 @@ if __name__ == '__main__':
         for feature_name, d in topk_feature_map.features.items():
             tot_features += d['vocab_size']
 
+        if idx is not None:
+            return sum([topk_feature_map.features[d]['vocab_size'] for d in topk_params['use_features']][
+                       :idx + 1]) / tot_features
+
         for i in range(len(feature_map.features)):
-            cur_ratio = sum([topk_feature_map.features[d]['vocab_size'] for d in topk_params['use_features']][:i + 1]) / tot_features
+            cur_ratio = sum([topk_feature_map.features[d]['vocab_size'] for d in topk_params['use_features']][
+                            :i + 1]) / tot_features
             if cur_ratio >= ratio:
                 if i == 0:
-                    return int(len(df['feature_name'].values.tolist())*ratio), cur_ratio
+                    return int(len(df['feature_name'].values.tolist()) * ratio), cur_ratio
                 else:
                     return i, cur_ratio
 
     idx, ratio = ratio_for_features(0.1)
+    print(f"ratio: {ratio}, idx: {idx}")
 
     # for i in [9, 10, 11]:
     # incre = 1
     # for i in reversed(range(9 + incre - 1, len(feature_map.features) + incre - 1, incre)):
-    for i in [idx - 1, idx]:
+    for i in [idx, idx - 1]:
         topk_params = copy.deepcopy(params)
         seed_everything(seed=params['seed'])
         topk_params['use_features'] = df['feature_name'].values.tolist()[:i + 1]
