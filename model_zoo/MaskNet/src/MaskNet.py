@@ -28,7 +28,61 @@ from model_zoo.utils import get_sum_feature_dimisions
 import feat_select.MvFS_module as Mv
 from model_zoo.utils import permute_feature
 import copy
+import torch
+from torch import nn
+import torch.nn.functional as F
+from fuxictr.pytorch.models import BaseModel
+from fuxictr.pytorch.layers import FeatureEmbedding, MLP_Block
+from fuxictr.pytorch.torch_utils import get_activation
+import logging
+from tqdm import tqdm
+import sys
+import numpy as np
+import pandas as pd
+from model_zoo.utils import get_sum_feature_dimisions
+# MvFS_module would be in a separate file, so we assume it exists.
+# import feat_select.MvFS_module as Mv 
+from model_zoo.utils import permute_feature
+import copy
 
+class ConcreteSelector(nn.Module):
+    """
+    A differentiable feature selector using the Gumbel-Softmax trick,
+    inspired by Concrete Autoencoders.
+    """
+    def __init__(self, num_features_total, num_features_to_select, initial_temp=10.0):
+        super(ConcreteSelector, self).__init__()
+        self.num_total = num_features_total
+        self.num_select = num_features_to_select
+        self.temperature = initial_temp
+        
+        # Learnable logits for k independent selections from M features
+        self.selector_logits = nn.Parameter(torch.randn(self.num_select, self.num_total))
+
+    def set_temperature(self, temp):
+        """Update the temperature for annealing."""
+        self.temperature = temp
+
+    def forward(self, feature_embeddings):
+        """
+        Args:
+            feature_embeddings (torch.Tensor): The input tensor of shape (B, M, D).
+        Returns:
+            torch.Tensor: The selected feature embeddings of shape (B, k, D).
+        """
+        # Get the batch size
+        batch_size = feature_embeddings.shape[0]
+        
+        # Sample a soft selection matrix using Gumbel-Softmax
+        # Shape: (k, M) -> broadcast to (B, k, M)
+        selection_matrix = F.gumbel_softmax(self.selector_logits, tau=self.temperature, hard=False)
+        selection_matrix = selection_matrix.unsqueeze(0).expand(batch_size, -1, -1)
+        
+        # Apply the selection to the embeddings
+        # (B, k, M) @ (B, M, D) -> (B, k, D)
+        selected_embeddings = torch.bmm(selection_matrix, feature_embeddings)
+        
+        return selected_embeddings, selection_matrix.detach()
 
 class MaskNet(BaseModel):
     def __init__(self, 
@@ -56,8 +110,21 @@ class MaskNet(BaseModel):
                                       embedding_regularizer=embedding_regularizer,
                                       net_regularizer=net_regularizer,
                                       **kwargs)
+        if 'cae_dict' in kwargs:
+            cae_params = kwargs['cae_dict']
+            logging.info("Enabling Concrete Autoencoder (CAE) feature selection.")
+            k = cae_params.get('k', int(0.5 * feature_map.num_fields)) # Default to selecting 50% of fields
+            initial_temp = cae_params.get('initial_temp', 10.0)
+            
+            self.controller = ConcreteSelector(
+                num_features_total=feature_map.num_fields,
+                num_features_to_select=k,
+                initial_temp=initial_temp
+            )
+            self.num_fields_selected = k
+            self.cae_params = cae_params # Store params for the fit loop
 
-        if kwargs.get('optfs_dict', None) is not None:
+        elif kwargs.get('optfs_dict', None) is not None:
             assert type(kwargs.get('optfs_dict')) == dict, 'optfs params should be a dict'
             optfs_dict = {
                 'temp': 5000
@@ -589,6 +656,74 @@ class MaskNet(BaseModel):
             if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.Linear):
                 if hasattr(m, 'checkpoint'):
                     m.load_state_dict(m.checkpoint)
+    
+    def fit_with_cae(self, data_generator, epochs=1, validation_data=None,
+                    max_gradient_norm=10., **kwargs):
+        """ A custom training loop to handle temperature annealing for CAE. """
+        self.valid_gen = validation_data
+        self._max_gradient_norm = max_gradient_norm
+        self._best_metric = np.Inf if self._monitor_mode == "min" else -np.Inf
+        self._stopping_steps = 0
+        self._steps_per_epoch = len(data_generator)
+        self._stop_training = False
+        self._total_steps = 0
+        
+        # Get annealing parameters from the stored config
+        initial_temp = self.cae_params.get('initial_temp', 10.0)
+        final_temp = self.cae_params.get('final_temp', 0.1)
+        anneal_epochs = self.cae_params.get('anneal_epochs', epochs)
+
+        logging.info("Starting CAE training with temperature annealing.")
+        
+        for epoch in range(epochs):
+            self._epoch_index = epoch
+            
+            # === Temperature Annealing Logic ===
+            if self.controller is not None and isinstance(self.controller, ConcreteSelector):
+                if epoch < anneal_epochs:
+                    # Exponential decay for temperature
+                    decay_rate = (final_temp / initial_temp) ** (1.0 / (anneal_epochs -1)) if anneal_epochs > 1 else 0
+                    current_temp = initial_temp * (decay_rate ** epoch)
+                else:
+                    current_temp = final_temp
+                self.controller.set_temperature(current_temp)
+                logging.info(f"Epoch {epoch + 1}/{epochs}: CAE temperature set to {current_temp:.4f}")
+            # =================================
+
+            self.train()
+            batch_iterator = tqdm(data_generator, disable=False, file=sys.stdout)
+            epoch_loss = 0
+            for batch_index, batch_data in enumerate(batch_iterator):
+                self._total_steps += 1
+                return_dict = self.forward(batch_data)
+                
+                self.optimizer.zero_grad()
+                y_true = self.get_labels(batch_data)
+                loss = self.compute_loss(return_dict, y_true)
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.parameters(), self._max_gradient_norm)
+                self.optimizer.step()
+                epoch_loss += loss.item()
+
+                if self._verbose > 0:
+                    batch_iterator.set_description(f"Epoch {epoch+1}, Loss: {loss.item():.4f}")
+            
+            # --- End of Epoch ---
+            avg_loss = epoch_loss / self._steps_per_epoch
+            logging.info(f"Epoch {epoch + 1} average loss: {avg_loss:.4f}")
+
+            if validation_data:
+                val_logs = self.evaluate(validation_data)
+                self.checkpoint_and_earlystop(val_logs) # From BaseModel
+            
+            if self._stop_training:
+                logging.info("Early stopping at epoch {}.".format(epoch + 1))
+                break
+
+        logging.info("CAE training finished.")
+        # Load best model weights if checkpointing was used
+        if self.checkpoint:
+             self.load_weights(self.checkpoint)
 
 class SerialMaskNet(nn.Module):
     def __init__(self, input_dim, output_dim=None, output_activation=None, hidden_units=[], 
